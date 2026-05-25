@@ -93,6 +93,9 @@ An Arduino-based precision timekeeping device that synchronizes to atomic time v
 | White | Speaker + / Volume pot |
 | Black | Speaker − |
 
+<img width="1117" height="984" alt="image" src="https://github.com/user-attachments/assets/85b5aa8d-cb10-476e-9e9e-64c01511d3c6" />
+
+
 ---
 
 ## Design Files
