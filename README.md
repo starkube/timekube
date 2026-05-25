@@ -101,7 +101,7 @@ An Arduino-based precision timekeeping device that synchronizes to atomic time v
 |---|---|
 | 3D Print Files (STL) | [OnShape CAD](https://cad.onshape.com/documents/f47f5ee7ce2854b4617142ce/w/78f16faa0b1682fba33c5218/e/67465c017aa9228f80cce16c) |
 
-
+<img width="866" height="667" alt="image" src="https://github.com/user-attachments/assets/0ff9269a-36ec-46c7-a911-5ecafa88eee9" />
 ---
 
 ## Repository Contents
@@ -188,7 +188,7 @@ ES100 integration guidance: [Keith Greiner](https://sites.google.com/site/wwvbre
 <BR>
 <img width="838" height="457" alt="image" src="https://github.com/user-attachments/assets/a47f6c65-3a25-4f25-a78a-7144d3985e76" />
 <BR>
-<img width="866" height="667" alt="image" src="https://github.com/user-attachments/assets/0ff9269a-36ec-46c7-a911-5ecafa88eee9" />
+
 <BR>
 
 <BR>
