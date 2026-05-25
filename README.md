@@ -7,7 +7,7 @@
 # Project TimeKube
 ### Arduino WWVB/GPS Clock with WWV/WWVH Audio
 
-An Arduino-based precision timekeeping device that synchronizes to atomic time via WWVB radio and GPS, displays multiple time zones on a 20×4 LCD, plays WWV/WWVH audio time announcements, and tracks personal calendar events — all in a 3D-printed enclosure inspired by the classic Radio Shack TimeKube of the 1970/80s.
+An Arduino-based precision timekeeping device that synchronizes to atomic time via WWVB radio and GPS, displays multiple time zones with auto DST/SummerTime updates on a 20×4 LCD, plays WWV/WWVH audio time announcements, and tracks personal calendar events — all in a 3D-printed enclosure inspired by the classic Radio Shack TimeKube of the 1970/80s.
 
 ---
 
