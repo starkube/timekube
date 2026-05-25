@@ -147,7 +147,7 @@ WWV/WWVH audio source files: [wwv.mcodes.org](https://wwv.mcodes.org/)
 
 ### WWVB Reception
 
-The ES100 cannot decode the special extended time frame broadcast for 6 minutes each half-hour (minutes 10–16 and 40–46 past each hour). Reception attempts are skipped during these windows automatically.
+The ES100 cannot decode the special extended time frame broadcast for 6 minutes each half-hour (minutes 10–16 and 40–46 past each hour). Reception attempts should be avoided during these windows.
 
 **Important:** The WWVB antenna is very sensitive to electrical noise. In this build the antenna had to be mounted externally to get reliable reception. Keep it away from switching power supplies, LCD backlights, and other noise sources.
 
@@ -183,10 +183,10 @@ WWVB protocol reference: [Wikipedia](https://en.wikipedia.org/wiki/WWVB)
 
 ## Acknowledgments
 
-Inspired by the cube-form weather radios of the 1970s (Realistic Weatheradio and similar).  
-ES100 integration guidance: [Keith Greiner](https://sites.google.com/site/wwvbreceiverwitharduino/)
-
-
+- Inspired by the cube-form weather radios of the 1970s (Realistic Weatheradio and similar).  
+- ES100 integration guidance: [Keith Greiner](https://sites.google.com/site/wwvbreceiverwitharduino/)
+- WWV/WWVH Audio Files: [Jim kalfut](https://wwv.mcodes.org/)
+- Historical WWV/WWVH Audio Identifications: [Myke Dodge Weiskoph](https://shortwavemusic.bandcamp.com/album/at-the-tone-a-little-history-of-nist-radio-stations-wwv-wwvh)
 
 
 <BR>
