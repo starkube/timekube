@@ -155,7 +155,7 @@ WWVB protocol reference: [Wikipedia](https://en.wikipedia.org/wiki/WWVB)
 
 ## Build Notes & Lessons Learned
 
-**MP3 Player** — An inexpensive DFRobot DFLayer Mini that uses a SD card was considered, but individual audio file addressing is done by the numeric value of the sequence it was loaded on the SD card, not the file numbering or naming.  Not a good option, so the DFPlayer Pro which is more advanced, uses flash ram loaded from a USB-C and can have individual file addressing. The player will announce "MUSIC" for music playback mode every time it is powered on until you run a onetime script to turn this off.  Code to do this is in the build scripts folder. 
+**MP3 Player** — An inexpensive DFRobot DFPayer Mini that uses a SD card was considered, but individual audio file addressing is done by the numeric value of the sequence it was loaded on the SD card, not the file numbering or naming.  Not a good option, so the DFPlayer Pro which is more advanced, uses flash ram loaded from a USB-C and can have individual file addressing. The player will announce "MUSIC" for music playback mode every time it is powered on until you run a onetime script to turn this off.  Code to do this is in the build scripts folder. 
 
 **Volume control** — Volume is read via analog pot on the Due and sent as a digital value to the DFPlayer. An L-pad attenuator would have been a better design: it handles attenuation in true analog, keeps speaker impedance constant, and removes the Due from the audio signal path entirely.  Using the analog pot requires a constant read and digital output to the DFPlayer.
 
