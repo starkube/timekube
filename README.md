@@ -10,8 +10,7 @@
 | Resource | Link |
 |---|---|
 | 3D Print Files | [OnShape CAD](https://cad.onshape.com/documents/f47f5ee7ce2854b4617142ce/w/78f16faa0b1682fba33c5218/e/67465c017aa9228f80cce16c) |
-| Circuit Diagram | [Cirkit Designer](https://app.cirkitdesigner.com/project/91a7f5a8-7523-460a-bbd8-373d6684543a) |
-| BOM Spreadsheet | [Google Sheet](https://docs.google.com/spreadsheets/d/1GN6ld3xGk032MxlrJK5zELR0rM6Zr99TY1Dd1nu3Fkk/edit?usp=sharing) |
+ |
 
 ---
 
