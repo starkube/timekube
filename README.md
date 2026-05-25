@@ -112,7 +112,6 @@ An Arduino-based precision timekeeping device that synchronizes to atomic time v
 ├── events.h                    Calendar events table (birthdays, anniversaries, holidays)
 ├── /audio                      WWV/WWVH MP3 source files
 │   └── ...                     Organized in 8.3 folder/file format for DFPlayer Pro
-├── /stl                        3D print enclosure files
 ├── /schematic                  Circuit diagram exports
 └── /utilities                  Component test scripts, MP3 player setup tools
 ```
