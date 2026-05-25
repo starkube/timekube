@@ -800,8 +800,8 @@ const char *dir_part_v = "/v/";
 const char *dir_part_h = "/h/";
 int time_value = 0;
 const char *mp3_ext = ".mp3";
-String finalString = "";
-
+//String finalString = "";
+char finalString[16];  // fixed buffer replaces String — avoids heap fragmentation
 
 int data_dst_next_month = 0;
 int data_dst_next_day = 0;
@@ -3093,36 +3093,13 @@ printTwoDigit(12, 2, now.second());
       lcd.print("WWV (Ft.Collins, CO)");
       lcd.setCursor(0, 2);
       lcd.print("UTC:");
-      lcd.setCursor(6, 2);
-      if (now.hour() <= 9) {
-        lcd.print("0");
-        lcd.setCursor(7, 2);
-        lcd.print(now.hour(), DEC);
-      } else {
-        lcd.print(now.hour(), DEC);
-      }
+      printTwoDigit(6, 2, now.hour());
       lcd.setCursor(8, 2);
       lcd.print(":");
-      lcd.setCursor(9, 2);
-      if (now.minute() <= 9) {
-        lcd.print("0");
-        lcd.setCursor(10, 2);
-        lcd.print(now.minute(), DEC);
-      } else {
-        lcd.print(now.minute(), DEC);
-      }
+      printTwoDigit(9, 2, now.minute());
       lcd.setCursor(11, 2);
       lcd.print(":");
-      lcd.setCursor(12, 2);
-
-      if (now.second() <= 9) {
-        lcd.print("0");
-        lcd.setCursor(13, 2);
-        lcd.print(now.second(), DEC);
-
-      } else {
-        lcd.print(now.second(), DEC);
-      }
+      printTwoDigit(12, 2, now.second());
 
       //delay(2000);
       now = rtc.now();
@@ -3135,14 +3112,7 @@ printTwoDigit(12, 2, now.second());
 
         lcd.setCursor(8, 2);
         lcd.print(":");
-        lcd.setCursor(9, 2);
-        if (time_value <= 9) {
-          lcd.print("0");
-          lcd.setCursor(10, 2);
-          lcd.print(time_value);
-        } else {
-          lcd.print(time_value);
-        }
+        printTwoDigit(9, 2, time_value);
 
         lcd.setCursor(12, 2);
         lcd.print("00");
@@ -3183,16 +3153,7 @@ printTwoDigit(12, 2, now.second());
           now = rtc.now();
 
           tick = now.second();
-          if (now.second() <= 9) {
-            lcd.setCursor(12, 2);
-            lcd.print("0");
-            lcd.setCursor(13, 2);
-            lcd.print(now.second(), DEC);
-
-          } else {
-            lcd.setCursor(12, 2);
-            lcd.print(now.second(), DEC);
-          }
+          printTwoDigit(12, 2, now.second());
         }
       }
 
@@ -3225,16 +3186,7 @@ printTwoDigit(12, 2, now.second());
 
           now = rtc.now();
           tick = now.second();
-          if (now.second() <= 9) {
-            lcd.setCursor(12, 2);
-            lcd.print("0");
-            lcd.setCursor(13, 2);
-            lcd.print(now.second(), DEC);
-
-          } else {
-            lcd.setCursor(12, 2);
-            lcd.print(now.second(), DEC);
-          }
+          printTwoDigit(12, 2, now.second());
         }
 
         // delay(50000 - (tick * 1000));
@@ -3261,16 +3213,7 @@ printTwoDigit(12, 2, now.second());
           // DateTime now = rtc.now();
           now = rtc.now();
           tick = now.second();
-          if (now.second() <= 9) {
-            lcd.setCursor(12, 2);
-            lcd.print("0");
-            lcd.setCursor(13, 2);
-            lcd.print(now.second(), DEC);
-
-          } else {
-            lcd.setCursor(12, 2);
-            lcd.print(now.second(), DEC);
-          }
+          printTwoDigit(12, 2, now.second());
         }
 
         time_value = now.hour();
@@ -3281,7 +3224,7 @@ printTwoDigit(12, 2, now.second());
           if (now.minute() == 59) { time_value++; }
         }
 
-        finalString = String(dir_part_v) + String(time_value) + String(mp3_ext);
+        snprintf(finalString, sizeof(finalString), "/v/%d.mp3", time_value);
         DF1201S.playSpecFile(finalString);
         //Serial.print("Hours:");
         // Serial.println(finalString);
@@ -3289,16 +3232,7 @@ printTwoDigit(12, 2, now.second());
 
         now = rtc.now();
         tick = now.second();
-        if (now.second() <= 9) {
-          lcd.setCursor(12, 2);
-          lcd.print("0");
-          lcd.setCursor(13, 2);
-          lcd.print(now.second(), DEC);
-
-        } else {
-          lcd.setCursor(12, 2);
-          lcd.print(now.second(), DEC);
-        }
+        printTwoDigit(12, 2, now.second());
 
         DF1201S.playSpecFile("/v/hours.mp3");
         delay(1000);
@@ -3306,16 +3240,7 @@ printTwoDigit(12, 2, now.second());
 
         now = rtc.now();
         tick = now.second();
-        if (now.second() <= 9) {
-          lcd.setCursor(12, 2);
-          lcd.print("0");
-          lcd.setCursor(13, 2);
-          lcd.print(now.second(), DEC);
-
-        } else {
-          lcd.setCursor(12, 2);
-          lcd.print(now.second(), DEC);
-        }
+        printTwoDigit(12, 2, now.second());
 
 
         time_value = now.minute();
@@ -3324,66 +3249,30 @@ printTwoDigit(12, 2, now.second());
         } else {
           time_value++;
         }
-        finalString = String(dir_part_v) + String(time_value) + String(mp3_ext);
+        snprintf(finalString, sizeof(finalString), "/v/%d.mp3", time_value);
         DF1201S.playSpecFile(finalString);
         //Serial.print("Minute:");
         //Serial.println(finalString);
         now = rtc.now();
         tick = now.second();
-        if (now.second() <= 9) {
-          lcd.setCursor(12, 2);
-          lcd.print("0");
-          lcd.setCursor(13, 2);
-          lcd.print(now.second(), DEC);
-
-        } else {
-          lcd.setCursor(12, 2);
-          lcd.print(now.second(), DEC);
-        }
+        printTwoDigit(12, 2, now.second());
 
         delay(800);
         now = rtc.now();
         tick = now.second();
-        if (now.second() <= 9) {
-          lcd.setCursor(12, 2);
-          lcd.print("0");
-          lcd.setCursor(13, 2);
-          lcd.print(now.second(), DEC);
-
-        } else {
-          lcd.setCursor(12, 2);
-          lcd.print(now.second(), DEC);
-        }
+        printTwoDigit(12, 2, now.second());
 
         DF1201S.playSpecFile("/v/mins.mp3");
 
         delay(800);
         now = rtc.now();
         tick = now.second();
-        if (now.second() <= 9) {
-          lcd.setCursor(12, 2);
-          lcd.print("0");
-          lcd.setCursor(13, 2);
-          lcd.print(now.second(), DEC);
-
-        } else {
-          lcd.setCursor(12, 2);
-          lcd.print(now.second(), DEC);
-        }
+        printTwoDigit(12, 2, now.second());
 
         DF1201S.playSpecFile("/v/utc.mp3");
         now = rtc.now();
         tick = now.second();
-        if (now.second() <= 9) {
-          lcd.setCursor(12, 2);
-          lcd.print("0");
-          lcd.setCursor(13, 2);
-          lcd.print(now.second(), DEC);
-
-        } else {
-          lcd.setCursor(12, 2);
-          lcd.print(now.second(), DEC);
-        }
+        printTwoDigit(12, 2, now.second());
 
 
 
@@ -3396,64 +3285,33 @@ printTwoDigit(12, 2, now.second());
 
       break;
 
-    case 9:
-      lcd.setCursor(0, 0);
+      case 9:
+     lcd.setCursor(0, 0);
       lcd.print("WWVH (Kauai, Hawaii)");
       // monitor volume pot, set volume
       DF1201S.setVol(((analogRead(A0) * (40) / 1023)));
 
       lcd.setCursor(0, 2);
       lcd.print("UTC:");
-      lcd.setCursor(6, 2);
-      if (now.hour() <= 9) {
-        lcd.print("0");
-        lcd.setCursor(7, 2);
-        lcd.print(now.hour(), DEC);
-      } else {
-        lcd.print(now.hour(), DEC);
-      }
+      printTwoDigit(6, 2, now.hour());
       lcd.setCursor(8, 2);
       lcd.print(":");
-      lcd.setCursor(9, 2);
-      if (now.minute() <= 9) {
-        lcd.print("0");
-        lcd.setCursor(10, 2);
-        lcd.print(now.minute(), DEC);
-      } else {
-        lcd.print(now.minute(), DEC);
-      }
+      printTwoDigit(9, 2, now.minute());
       lcd.setCursor(11, 2);
       lcd.print(":");
-      lcd.setCursor(12, 2);
+      printTwoDigit(12, 2, now.second());
 
-      if (now.second() <= 9) {
-        lcd.print("0");
-        lcd.setCursor(13, 2);
-        lcd.print(now.second(), DEC);
-
-      } else {
-        lcd.print(now.second(), DEC);
-      }
-
-      //delay(2000);
       now = rtc.now();
-
       tick = now.second();
-      //String min_string = "";
+
+           // --- Second 0: top-of-minute 1.5kHz tone ---
       if (tick == 0) {
 
         time_value = now.minute();
 
         lcd.setCursor(8, 2);
         lcd.print(":");
-        lcd.setCursor(9, 2);
-        if (time_value <= 9) {
-          lcd.print("0");
-          lcd.setCursor(10, 2);
-          lcd.print(time_value);
-        } else {
-          lcd.print(time_value);
-        }
+        printTwoDigit(9, 2, time_value);
 
         lcd.setCursor(12, 2);
         lcd.print("00");
@@ -3465,27 +3323,23 @@ printTwoDigit(12, 2, now.second());
           lcd.setCursor(12, 2);
           lcd.print("01");
         }
-        //delay(400);
-
-        //while ((tick < 1)) {
-        // now = rtc.now();
-        // tick = now.second();
-        // }
       }
+
+
       now = rtc.now();
       tick = now.second();
 
+      // --- Seconds 1-43: 440Hz continuous tone ---
       if ((tick > 0) && (tick < 44)) {
 
         lcd.setCursor(0, 3);
         lcd.print("Press for Ident");
 
         DF1201S.playSpecFile("/t/v_440.mp3");
-        //     if(DF1201S.isPlaying()){Serial.println("1-44 tone");}else{ Serial.println("no 1-44 tone"); }
         while (((now.second() > 0) && (now.second() < 44))) {
           // monitor volume pot, set volume
           DF1201S.setVol(((analogRead(A0) * (40) / 1023)));
-          //break if encoder changes
+          // break if encoder changes
           eb1.update();
           value = page_number;
           if ((value != last)) {
@@ -3494,76 +3348,44 @@ printTwoDigit(12, 2, now.second());
             DF1201S.pause();
             break;
           }
-          //
-          //   lcd.setCursor(19, 3);
-          //   lcd.print(page_number);  // show the new one
-          // }
 
-
-
-          //delay(900);
-          // DateTime now = rtc.now();
           now = rtc.now();
-
           tick = now.second();
-          if (now.second() <= 9) {
-            lcd.setCursor(12, 2);
-            lcd.print("0");
-            lcd.setCursor(13, 2);
-            lcd.print(now.second(), DEC);
-
-          } else {
-            lcd.setCursor(12, 2);
-            lcd.print(now.second(), DEC);
-          }
+          printTwoDigit(12, 2, now.second());
         }
-
-        //delay(29000-(tick*1000));
       }
+
 
       now = rtc.now();
       tick = now.second();
 
+      // --- Seconds 45-50: alert tone ---
       if ((tick > 44) && (tick < 51)) {
-        // monitor volume pot, set volume
 
         DF1201S.playSpecFile("/t/al.mp3");
-        //delay(4500);
-        //      if(DF1201S.isPlaying()){Serial.println("tick tone");}else{ Serial.println("no tick tone"); }
         now = rtc.now();
         tick = now.second();
 
         while (((tick > 44) && (tick < 51))) {
           // monitor volume pot, set volume
           DF1201S.setVol(((analogRead(A0) * (40) / 1023)));
-          //break if encoder changes
+          // break if encoder changes
           eb1.update();
           value = page_number;
           if ((value != last)) {
             DF1201S.pause();
-            break;
             lcd.clear();
             last = value;
+            break;
           }
 
           now = rtc.now();
           tick = now.second();
-          if (now.second() <= 9) {
-            lcd.setCursor(12, 2);
-            lcd.print("0");
-            lcd.setCursor(13, 2);
-            lcd.print(now.second(), DEC);
-
-          } else {
-            lcd.setCursor(12, 2);
-            lcd.print(now.second(), DEC);
-          }
+          printTwoDigit(12, 2, now.second());
         }
-
-        // delay(50000 - (tick * 1000));
       }
-      now = rtc.now();
 
+      now = rtc.now();
       tick = now.second();
 
       if ((tick > 51) && (tick < 56)) {
@@ -3573,8 +3395,6 @@ printTwoDigit(12, 2, now.second());
         lcd.print("                ");
 
         DF1201S.playSpecFile("/h/attone.mp3");
-        // delay(1500);
-        //   if(DF1201S.isPlaying()){Serial.println("att");}else{ Serial.println("no att tone"); }
 
         while (((tick > 51) && (tick < 53))) {
           // monitor volume pot, set volume
@@ -3583,18 +3403,11 @@ printTwoDigit(12, 2, now.second());
           // DateTime now = rtc.now();
           now = rtc.now();
           tick = now.second();
-          if (now.second() <= 9) {
-            lcd.setCursor(12, 2);
-            lcd.print("0");
-            lcd.setCursor(13, 2);
-            lcd.print(now.second(), DEC);
-
-          } else {
-            lcd.setCursor(12, 2);
-            lcd.print(now.second(), DEC);
-          }
+          printTwoDigit(12, 2, now.second());
         }
 
+
+        // Find Hour and create string to call mp3
         time_value = now.hour();
         // time_value_min=now.minute();
         if ((now.hour() == 23) && (now.minute() == 59)) {
@@ -3603,24 +3416,16 @@ printTwoDigit(12, 2, now.second());
           if (now.minute() == 59) { time_value++; }
         }
 
-        finalString = String(dir_part_h) + String(time_value) + String(mp3_ext);
+        snprintf(finalString, sizeof(finalString), "/h/%d.mp3", time_value);
         DF1201S.playSpecFile(finalString);
         //Serial.print("Hours:");
         // Serial.println(finalString);
         delay(700);
 
+        //Update clock before calling minutes
         now = rtc.now();
         tick = now.second();
-        if (now.second() <= 9) {
-          lcd.setCursor(12, 2);
-          lcd.print("0");
-          lcd.setCursor(13, 2);
-          lcd.print(now.second(), DEC);
-
-        } else {
-          lcd.setCursor(12, 2);
-          lcd.print(now.second(), DEC);
-        }
+        printTwoDigit(12, 2, now.second());
 
 
 
@@ -3630,389 +3435,39 @@ printTwoDigit(12, 2, now.second());
 
         now = rtc.now();
         tick = now.second();
-        if (now.second() <= 9) {
+        printTwoDigit(12, 2, now.second());
 
-          lcd.setCursor(12, 2);
-          lcd.print("0");
-          lcd.setCursor(13, 2);
-          lcd.print(now.second(), DEC);
-
-        } else {
-          lcd.setCursor(12, 2);
-          lcd.print(now.second(), DEC);
-        }
-
-
+        // Find minutes and create string to call mp3
         time_value = now.minute();
         if (time_value == 59) {
           time_value = 0;
         } else {
           time_value++;
         }
-        finalString = String(dir_part_h) + String(time_value) + String(mp3_ext);
+        snprintf(finalString, sizeof(finalString), "/h/%d.mp3", time_value);
         DF1201S.playSpecFile(finalString);
         //Serial.print("Minute:");
         //Serial.println(finalString);
         now = rtc.now();
         tick = now.second();
-        if (now.second() <= 9) {
-          lcd.setCursor(12, 2);
-          lcd.print("0");
-          lcd.setCursor(13, 2);
-          lcd.print(now.second(), DEC);
-
-        } else {
-          lcd.setCursor(12, 2);
-          lcd.print(now.second(), DEC);
-        }
+        printTwoDigit(12, 2, now.second());
 
         delay(800);
         now = rtc.now();
         tick = now.second();
-        if (now.second() <= 9) {
-          lcd.setCursor(12, 2);
-          lcd.print("0");
-          lcd.setCursor(13, 2);
-          lcd.print(now.second(), DEC);
-
-        } else {
-          lcd.setCursor(12, 2);
-          lcd.print(now.second(), DEC);
-        }
+        printTwoDigit(12, 2, now.second());
 
         DF1201S.playSpecFile("/h/mins.mp3");
 
         delay(800);
         now = rtc.now();
         tick = now.second();
-        if (now.second() <= 9) {
-          lcd.setCursor(12, 2);
-          lcd.print("0");
-          lcd.setCursor(13, 2);
-          lcd.print(now.second(), DEC);
-
-        } else {
-          lcd.setCursor(12, 2);
-          lcd.print(now.second(), DEC);
-        }
+        printTwoDigit(12, 2, now.second());
 
         DF1201S.playSpecFile("/h/utc.mp3");
         now = rtc.now();
         tick = now.second();
-        if (now.second() <= 9) {
-          lcd.setCursor(12, 2);
-          lcd.print("0");
-          lcd.setCursor(13, 2);
-          lcd.print(now.second(), DEC);
-
-        } else {
-          lcd.setCursor(12, 2);
-          lcd.print(now.second(), DEC);
-        }
-
-        //delay(900);
-
-        lcd.setCursor(0, 2);
-        lcd.print("UTC:");
-        lcd.setCursor(6, 2);
-        if (now.hour() <= 9) {
-          lcd.print("0");
-          lcd.setCursor(7, 2);
-          lcd.print(now.hour(), DEC);
-        } else {
-          lcd.print(now.hour(), DEC);
-        }
-        lcd.setCursor(8, 2);
-        lcd.print(":");
-        lcd.setCursor(9, 2);
-        if (now.minute() <= 9) {
-          lcd.print("0");
-          lcd.setCursor(10, 2);
-          lcd.print(now.minute(), DEC);
-        } else {
-          lcd.print(now.minute(), DEC);
-        }
-        lcd.setCursor(11, 2);
-        lcd.print(":");
-        lcd.setCursor(12, 2);
-
-        if (now.second() <= 9) {
-          lcd.print("0");
-          lcd.setCursor(13, 2);
-          lcd.print(now.second(), DEC);
-
-        } else {
-          lcd.print(now.second(), DEC);
-        }
-
-        //delay(2000);
-        now = rtc.now();
-
-        tick = now.second();
-        //String min_string = "";
-        if (tick == 0) {
-
-          time_value = now.minute();
-
-          lcd.setCursor(8, 2);
-          lcd.print(":");
-          lcd.setCursor(9, 2);
-          if (time_value <= 9) {
-            lcd.print("0");
-            lcd.setCursor(10, 2);
-            lcd.print(time_value);
-          } else {
-            lcd.print(time_value);
-          }
-
-          lcd.setCursor(12, 2);
-          lcd.print("00");
-
-          DF1201S.playSpecFile("/t/1k.mp3");
-          if (DF1201S.isPlaying()) {
-            //  Serial.println("0 tone");
-          } else {
-            lcd.setCursor(12, 2);
-            lcd.print("01");
-          }
-          //delay(400);
-
-          //while ((tick < 1)) {
-          // now = rtc.now();
-          // tick = now.second();
-          // }
-        }
-        now = rtc.now();
-        tick = now.second();
-
-        if ((tick > 0) && (tick < 44)) {
-
-
-
-          DF1201S.playSpecFile("/t/v_440.mp3");
-          //     if(DF1201S.isPlaying()){Serial.println("1-44 tone");}else{ Serial.println("no 1-44 tone"); }
-          while (((now.second() > 0) && (now.second() < 44))) {
-            // monitor volume pot, set volume
-            DF1201S.setVol(((analogRead(A0) * (40) / 1023)));
-            //break if encoder changes
-            eb1.update();
-            value = page_number;
-            if ((value != last)) {
-              lcd.clear();
-              last = value;
-              DF1201S.pause();
-              break;
-            }
-            //
-            //   lcd.setCursor(19, 3);
-            //   lcd.print(page_number);  // show the new one
-            // }
-
-
-
-            //delay(900);
-            // DateTime now = rtc.now();
-            now = rtc.now();
-
-            tick = now.second();
-            if (now.second() <= 9) {
-              lcd.setCursor(12, 2);
-              lcd.print("0");
-              lcd.setCursor(13, 2);
-              lcd.print(now.second(), DEC);
-
-            } else {
-              lcd.setCursor(12, 2);
-              lcd.print(now.second(), DEC);
-            }
-          }
-
-          //delay(29000-(tick*1000));
-        }
-
-        now = rtc.now();
-        tick = now.second();
-
-        if ((tick > 44) && (tick < 51)) {
-          DF1201S.playSpecFile("/t/al.mp3");
-          //delay(4500);
-          //      if(DF1201S.isPlaying()){Serial.println("tick tone");}else{ Serial.println("no tick tone"); }
-          now = rtc.now();
-          tick = now.second();
-
-          while (((tick > 44) && (tick < 51))) {
-            // monitor volume pot, set volume
-            DF1201S.setVol(((analogRead(A0) * (40) / 1023)));
-            //break if encoder changes
-            eb1.update();
-            value = page_number;
-            if ((value != last)) {
-
-              break;
-              lcd.clear();
-              last = value;
-            }
-
-            now = rtc.now();
-            tick = now.second();
-            if (now.second() <= 9) {
-              lcd.setCursor(12, 2);
-              lcd.print("0");
-              lcd.setCursor(13, 2);
-              lcd.print(now.second(), DEC);
-
-            } else {
-              lcd.setCursor(12, 2);
-              lcd.print(now.second(), DEC);
-            }
-          }
-        }
-        now = rtc.now();
-
-        tick = now.second();
-
-        if ((tick > 51) && (tick < 56)) {
-
-          DF1201S.playSpecFile("/h/attone.mp3");
-          // delay(1500);
-          //   if(DF1201S.isPlaying()){Serial.println("att");}else{ Serial.println("no att tone"); }
-
-          while (((tick > 51) && (tick < 53))) {
-            // monitor volume pot, set volume
-            DF1201S.setVol(((analogRead(A0) * (40) / 1023)));
-            //delay(900);
-            // DateTime now = rtc.now();
-            now = rtc.now();
-            tick = now.second();
-            if (now.second() <= 9) {
-              lcd.setCursor(12, 2);
-              lcd.print("0");
-              lcd.setCursor(13, 2);
-              lcd.print(now.second(), DEC);
-
-            } else {
-              lcd.setCursor(12, 2);
-              lcd.print(now.second(), DEC);
-            }
-          }
-
-          time_value = now.hour();
-          // time_value_min=now.minute();
-          if ((now.hour() == 23) && (now.minute() == 59)) {
-            time_value = 0;
-          } else {
-            if (now.minute() == 59) { time_value++; }
-          }
-
-          finalString = String(dir_part_h) + String(time_value) + String(mp3_ext);
-          DF1201S.playSpecFile(finalString);
-          //Serial.print("Hours:");
-          // Serial.println(finalString);
-          delay(700);
-
-          now = rtc.now();
-          tick = now.second();
-          if (now.second() <= 9) {
-            lcd.setCursor(12, 2);
-            lcd.print("0");
-            lcd.setCursor(13, 2);
-            lcd.print(now.second(), DEC);
-
-          } else {
-            lcd.setCursor(12, 2);
-            lcd.print(now.second(), DEC);
-          }
-
-
-
-
-          DF1201S.playSpecFile("/h/hours.mp3");
-          delay(1000);
-
-          now = rtc.now();
-          tick = now.second();
-          if (now.second() <= 9) {
-            lcd.setCursor(12, 2);
-            lcd.print("0");
-            lcd.setCursor(13, 2);
-            lcd.print(now.second(), DEC);
-
-          } else {
-            lcd.setCursor(12, 2);
-            lcd.print(now.second(), DEC);
-          }
-
-
-          time_value = now.minute();
-          if (time_value == 59) {
-            time_value = 0;
-          } else {
-            time_value++;
-          }
-          finalString = String(dir_part_h) + String(time_value) + String(mp3_ext);
-          DF1201S.playSpecFile(finalString);
-          //Serial.print("Minute:");
-          //Serial.println(finalString);
-          now = rtc.now();
-          tick = now.second();
-          if (now.second() <= 9) {
-            lcd.setCursor(12, 2);
-            lcd.print("0");
-            lcd.setCursor(13, 2);
-            lcd.print(now.second(), DEC);
-
-          } else {
-            lcd.setCursor(12, 2);
-            lcd.print(now.second(), DEC);
-          }
-
-          delay(800);
-          now = rtc.now();
-          tick = now.second();
-          if (now.second() <= 9) {
-            lcd.setCursor(12, 2);
-            lcd.print("0");
-            lcd.setCursor(13, 2);
-            lcd.print(now.second(), DEC);
-
-          } else {
-            lcd.setCursor(12, 2);
-            lcd.print(now.second(), DEC);
-          }
-
-          DF1201S.playSpecFile("/h/mins.mp3");
-
-          delay(800);
-          now = rtc.now();
-          tick = now.second();
-          if (now.second() <= 9) {
-            lcd.setCursor(12, 2);
-            lcd.print("0");
-            lcd.setCursor(13, 2);
-            lcd.print(now.second(), DEC);
-
-          } else {
-            lcd.setCursor(12, 2);
-            lcd.print(now.second(), DEC);
-          }
-
-          DF1201S.playSpecFile("/h/utc.mp3");
-          now = rtc.now();
-          tick = now.second();
-          if (now.second() <= 9) {
-            lcd.setCursor(12, 2);
-            lcd.print("0");
-            lcd.setCursor(13, 2);
-            lcd.print(now.second(), DEC);
-
-          } else {
-            lcd.setCursor(12, 2);
-            lcd.print(now.second(), DEC);
-          }
-
-          //delay(900);
-        }
-
+        printTwoDigit(12, 2, now.second());
 
         break;
       }
