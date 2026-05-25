@@ -40,6 +40,14 @@ An Arduino-based precision timekeeping device that synchronizes to atomic time v
 | WWV Ft. Collins | Audio time announcement — press to play ident |
 | WWVH Kauai | Audio time announcement — press to play ident |
 
+<img width="1086" height="604" alt="image" src="https://github.com/user-attachments/assets/7fcbc1f5-1380-4b70-bdc4-f22a5d11a0ea" />
+<img width="1033" height="539" alt="image" src="https://github.com/user-attachments/assets/5b1c0f73-1ad3-4964-b0f5-fda43e100e84" />
+<img width="1029" height="542" alt="image" src="https://github.com/user-attachments/assets/28c6d892-ca60-48dc-938e-6c54d806c259" />
+<img width="991" height="571" alt="image" src="https://github.com/user-attachments/assets/ae3f3c39-a5c2-4c14-8054-6e6a3a93ac25" />
+
+
+
+
 ---
 
 ## Hardware
