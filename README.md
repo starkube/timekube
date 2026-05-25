@@ -10,7 +10,7 @@
 | Resource | Link |
 |---|---|
 | 3D Print Files | [OnShape CAD](https://cad.onshape.com/documents/f47f5ee7ce2854b4617142ce/w/78f16faa0b1682fba33c5218/e/67465c017aa9228f80cce16c) |
- |
+ 
 
 ---
 
@@ -112,8 +112,7 @@ Any will do — $1
 
 
 
-<BR>
-<img width="715" height="418" alt="image" src="https://github.com/user-attachments/assets/724d5121-b44d-4c10-b50e-d3957e572378" />
+
 <BR>
 <img width="838" height="457" alt="image" src="https://github.com/user-attachments/assets/a47f6c65-3a25-4f25-a78a-7144d3985e76" />
 <BR>
