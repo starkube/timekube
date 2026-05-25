@@ -183,7 +183,7 @@ WWVB protocol reference: [Wikipedia](https://en.wikipedia.org/wiki/WWVB)
 
 ## Acknowledgments
 
-- Inspired by the cube-form weather radios of the 1970s (Realistic Weatheradio and similar).  
+- Inspired by the cube-form weather radios of the 1970s (Realistic Weatheradio & TimeKube).  
 - ES100 integration guidance: [Keith Greiner](https://sites.google.com/site/wwvbreceiverwitharduino/)
 - WWV/WWVH Audio Files: [Jim kalfut](https://wwv.mcodes.org/)
 - Historical WWV/WWVH Audio Identifications: [Myke Dodge Weiskoph](https://shortwavemusic.bandcamp.com/album/at-the-tone-a-little-history-of-nist-radio-stations-wwv-wwvh)
