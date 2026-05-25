@@ -7,7 +7,7 @@
 # Project TimeKube
 ### Arduino WWVB/GPS Clock with WWV/WWVH Audio
 
-An Arduino-based precision timekeeping device that synchronizes to atomic time via WWVB radio and GPS, displays multiple time zones on a 20×4 LCD, plays WWV/WWVH audio time announcements, and tracks personal calendar events — all in a 3D-printed enclosure inspired by the classic cube-style weather radios of the 1970s.
+An Arduino-based precision timekeeping device that synchronizes to atomic time via WWVB radio and GPS, displays multiple time zones on a 20×4 LCD, plays WWV/WWVH audio time announcements, and tracks personal calendar events — all in a 3D-printed enclosure inspired by the classic Radio Shack TimeKube of the 1970/80s.
 
 ---
 
@@ -29,11 +29,11 @@ An Arduino-based precision timekeeping device that synchronizes to atomic time v
 
 | Page | Description |
 |---|---|
-| UTC Time | Primary time display with date and sync source |
 | Local Time | Timezone-adjusted display |
+| UTC Time | Primary time display with date and sync source |
 | Last Sync | Date/time of last WWVB or GPS sync |
 | Clock Compare | Side-by-side GPS vs. RTC comparison (UTC) |
-| GPS Coords | Latitude, longitude, altitude (DD/DMS) |
+| GPS Coords | Latitude, longitude, altitude (DD/DMS) & (DecDeg) |
 | Dist/TOF | Distance and time-of-flight to Ft. Collins, CO |
 | Next DST | Upcoming DST change date |
 | Events | Upcoming birthdays and anniversaries |
