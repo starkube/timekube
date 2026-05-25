@@ -165,7 +165,7 @@ WWVB protocol reference: [Wikipedia](https://en.wikipedia.org/wiki/WWVB)
 
 **I2C pull-ups** — 2.2kΩ pull-up resistors on SDA/SCL are required. Without them the LCD behaves erratically.
 
-**Power** — The TimeKube draws ~300 mA. The power supply includes a 9V battery snap connector, but a standard alkaline 9V will not last long — use a **lithium 9V battery**.
+**Power** — The TimeKube draws ~300 mA. The power supply includes a 9V battery snap connector, but a standard alkaline 9V will not support the current — use a **lithium 9V battery**. A new lithium 9V will power the unit for ~4 hrs.
 
 **Debugging** — Many timing-dependent functions are difficult to observe in real time. An inexpensive Wyze cam pointed at the display was invaluable for unattended verification — battery life, sync events, and scheduled audio playback could all be confirmed by reviewing the recording afterward.
 
