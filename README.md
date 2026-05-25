@@ -190,7 +190,10 @@ ES100 integration guidance: [Keith Greiner](https://sites.google.com/site/wwvbre
 <img width="838" height="457" alt="image" src="https://github.com/user-attachments/assets/a47f6c65-3a25-4f25-a78a-7144d3985e76" />
 <BR>
 
-<BR>
+<img width="717" height="541" alt="image" src="https://github.com/user-attachments/assets/a869d70b-5766-42c0-a4c8-ab3787415d4d" />
+
+<img width="814" height="587" alt="image" src="https://github.com/user-attachments/assets/15e9001f-0bc9-4119-900c-c380615164a1" />
+<img width="469" height="354" alt="image" src="https://github.com/user-attachments/assets/61db66b1-a52d-40e1-be26-05a5646e8ee2" />
 
 <BR>
 <img width="821" height="449" alt="image" src="https://github.com/user-attachments/assets/fc665fb1-74f8-4578-b44e-41cc72476d86" />
