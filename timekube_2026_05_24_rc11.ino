@@ -73,8 +73,8 @@
 // 2025.12.05 - Added new audio
 // 2025.12.06 - More work on the timeout function for IRQ ES100
 // 2025.12.10 - Discovered in SFO that decimal degrees method wasn't sufficient, 119 deg threw off placement and math, reworked
-// 2025.05.23 - Added code to handle if failure to sync WWVB then sync auto to GPS.
-// 2025.05.24 - Turned Claude loose
+// 2025.05.24 - Claude fix: events struct made more readable
+// 2025.05.27 - Claude fix: GPS sync wrong/delayed time after WWVB fail
 
 
 
@@ -661,7 +661,7 @@ static void GPSloop_loc_Vel() {
 }  // GPSloop
 
 //--------------------------
-
+//Claude added subroutines
 void printTwoDigit(int col, int row, int val) {
   lcd.setCursor(col, row);
   if (val < 10) lcd.print('0');
@@ -673,6 +673,21 @@ void printYear(int col, int row, int year) {
   lcd.print(year, DEC);
 }
 
+
+// Wait for a fresh GPS fix with valid time and date.
+// Returns true if acquired within timeoutMs milliseconds.
+bool waitForFreshGPS(unsigned long timeoutMs = 10000) {
+  unsigned long start = millis();
+  while (millis() - start < timeoutMs) {
+    while (gps.available(gpsPort)) {
+      fix = gps.read();
+      if (fix.valid.time && fix.valid.date && fix.satellites >= 4) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
 //--------------------------
 
 void adjustTime(NeoGPS::time_t &dt) {
@@ -1295,16 +1310,21 @@ void onEb1Clicked(EncoderButton &eb) {
     if ((time_inIRQ < time_inIRQ_limit) && (sync_type > 0)) {
       wwvb_timestamp = rtc.now();
     } else {
-      if (fix.satellites > 3) {
-        lcd.clear();
-        lcd.setCursor(1, 1);
-        lcd.print("GPS Time Sync");
-        GPSloop_time();
+      lcd.clear();
+      lcd.setCursor(1, 1);
+      lcd.print("GPS Time Sync");
+      lcd.setCursor(0, 2);
+      lcd.print("Waiting for fix...");
+      if (waitForFreshGPS(15000)) {
         rtc.adjust(DateTime(fix.dateTime.year, fix.dateTime.month, fix.dateTime.date, fix.dateTime.hours, fix.dateTime.minutes, fix.dateTime.seconds));
         sync_type = 2;
         wwvb_timestamp = rtc.now();
-        delay(3000);
+      } else {
+        lcd.setCursor(0, 2);
+        lcd.print("GPS fix failed      ");
       }
+      delay(3000);
+      
     }
   }
 
@@ -2235,8 +2255,11 @@ void loop() {
     screen_saver = now.minute();
   }
 
-  if ((page_number > 1) && (abs(screen_saver - now.minute()) > screen_saver_timeout)) {
+
+if ((page_number > 1) && (abs(screen_saver - now.minute()) > screen_saver_timeout)) {
     page_number = 0;
+    page_number_menu = 0;  // keep menu counter in sync so encoder doesn't skip pages
+    oldPosition = eb1.position();  // anchor encoder position so next turn is a clean +/-1
     lcd.clear();
   }  // Screen saver puts back to clock after 1 min
 
@@ -2319,26 +2342,21 @@ void loop() {
     Serial.println(stamp.minute);
 
     if (count == attempt) {
-      if (fix.satellites > 3) {
-        lcd.clear();
-        lcd.setCursor(1, 1);
-        lcd.print("GPS Time Sync");
-        GPSloop_time();
-        utc = now.unixtime();
-
+      lcd.clear();
+      lcd.setCursor(1, 1);
+      lcd.print("GPS Time Sync");
+      lcd.setCursor(0, 2);
+      lcd.print("Waiting for fix...");
+      if (waitForFreshGPS(15000)) {
         rtc.adjust(DateTime(fix.dateTime.year, fix.dateTime.month, fix.dateTime.date, fix.dateTime.hours, fix.dateTime.minutes, fix.dateTime.seconds));
-        Serial.println("In GPS backup set condition");
-        Serial.print("Count: ");
-        Serial.println(count);
-        Serial.print(stamp.hour);
-        Serial.print(":");
-        Serial.println(stamp.minute);
-        //    rtc.adjust(DateTime(fix.dateTime.year, fix.dateTime.month, fix.dateTime.date, fix.dateTime.hours, fix.dateTime.minutes, fix.dateTime.seconds));
-        Serial.println(fix.dateTime.minutes);
         sync_type = 2;
         wwvb_timestamp = rtc.now();
-        delay(3000);
+      } else {
+        lcd.setCursor(0, 2);
+        lcd.print("GPS fix failed      ");
       }
+      delay(3000);
+    
     }
     //}
 
