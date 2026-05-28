@@ -75,7 +75,10 @@
 // 2025.12.10 - Discovered in SFO that decimal degrees method wasn't sufficient, 119 deg threw off placement and math, reworked
 // 2025.05.24 - Claude fix: events struct made more readable
 // 2025.05.27 - Claude fix: GPS sync wrong/delayed time after WWVB fail
-
+// 2025.05.28 - Claude fix: add watchdog - WARNING - this watchdog code only works with Due, will NOT work for MEGA
+//              Due to issues with the default way MEGA uses the avr/wdt.h native watchdog library and nax time of 8 sec
+//              it won't work well since es100 receive needs over 2 min each cycle.  Recommend not using watchdog with Mega at all
+//            - Asked Claude to update code to compensate for internal delay between receive time and set RTC for more accurate clock
 
 
 // Build BOM
@@ -259,7 +262,7 @@ byte blockclear[] = {
 const int LCD_COLS = 20;
 const int LCD_ROWS = 4;
 
-UnixTime stamp(0);
+UnixTime stamp(0);  //Local time
 UnixTime gps_stamp(0);
 
 double beginTime = 0;
@@ -840,6 +843,30 @@ int data_dst_next_hour = 0;
 
 #include "events.h"
 //#include "C:\Users\psvan\OneDrive\Documents\Arduino\holidays\holidays.h"
+
+
+
+// ── Watchdog Timer (Arduino Due / SAM3X8E) ──────────────────────────────────
+// Timeout ~4 seconds. If wdt_reset() is not called within that window,
+// the MCU reboots automatically.
+
+#define WDT_KEY  (0xA5u)
+
+void wdt_enable_due(uint32_t timeout_ms) {
+  // SAM3X8E WDT counts down at ~32 kHz (slow clock / 128)
+  // Tick period ≈ 3.9 ms.  timeout_ms / 3.9 ≈ timeout_ms * 256 / 1000
+  uint32_t counts = (timeout_ms * 256) / 1000;
+  if (counts > 0xFFF) counts = 0xFFF;   // 12-bit max
+  // WDV = timeout counts, WDFIEN=0, WDRSTEN=1 (reset on timeout), WDD=0xFFF (window disabled)
+  WDT->WDT_MR = WDT_MR_WDD(0xFFF)
+              | WDT_MR_WDV(counts)
+              | WDT_MR_WDRSTEN;          // reset on underflow
+  // Note: WDT_MR can only be written ONCE after reset — so call this only in setup()
+}
+
+void wdt_reset_due() {
+  WDT->WDT_CR = WDT_CR_KEY(WDT_KEY) | WDT_CR_WDRSTT;
+}
 
 //------------------------------------------------------------------------------
 // MCU constants - USER TO MODIFY
@@ -1755,17 +1782,18 @@ int hexToDec(String hexString) {
 // read date and time from API registers - Set local RTC clock
 //------------------------------------------------------------------------------
 
-void es100_read_time(int dt_array[]) {
-  dt_array[DT_STATUS] = es100_read_register(ES100_STATUS0_REG);
-  dt_array[DT_YEAR] = es100_read_register(ES100_YEAR_REG);
-  dt_array[DT_MONTH] = es100_read_register(ES100_MONTH_REG);
-  dt_array[DT_DAY] = es100_read_register(ES100_DAY_REG);
-  dt_array[DT_HOUR] = es100_read_register(ES100_HOUR_REG);
-  dt_array[DT_MINUTE] = es100_read_register(ES100_MINUTE_REG);
-  dt_array[DT_SECOND] = es100_read_register(ES100_SECOND_REG);
+void es100_read_time(int dt_array[], unsigned long irq_ms) {
+  dt_array[DT_STATUS]         = es100_read_register(ES100_STATUS0_REG);
+  dt_array[DT_YEAR]           = es100_read_register(ES100_YEAR_REG);
+  dt_array[DT_MONTH]          = es100_read_register(ES100_MONTH_REG);
+  dt_array[DT_DAY]            = es100_read_register(ES100_DAY_REG);
+  dt_array[DT_HOUR]           = es100_read_register(ES100_HOUR_REG);
+  dt_array[DT_MINUTE]         = es100_read_register(ES100_MINUTE_REG);
+  dt_array[DT_SECOND]         = es100_read_register(ES100_SECOND_REG);
+  // DST registers are non-time-critical, read after the time registers
   dt_array[DT_NEXT_DST_MONTH] = es100_read_register(ES100_NEXT_DST_MONTH_REG);
-  dt_array[DT_NEXT_DST_DAY] = es100_read_register(ES100_NEXT_DST_DAY_REG);
-  dt_array[DT_NEXT_DST_HOUR] = es100_read_register(ES100_NEXT_DST_HOUR_REG);
+  dt_array[DT_NEXT_DST_DAY]   = es100_read_register(ES100_NEXT_DST_DAY_REG);
+  dt_array[DT_NEXT_DST_HOUR]  = es100_read_register(ES100_NEXT_DST_HOUR_REG);
 
   // Convert from BCD to DEC
   int year = (int)bcdToDec(dt_array[DT_YEAR]);
@@ -1778,18 +1806,29 @@ void es100_read_time(int dt_array[]) {
   int dst_next_day = (int)bcdToDec(dt_array[DT_NEXT_DST_DAY]);
   int dst_next_hour = (int)bcdToDec(dt_array[DT_NEXT_DST_HOUR]);
 
-  // Conver to unsigned 8 bit integer rather than relying on type compiler defines for int
-  int data_year = (uint8_t)year;
-  int data_month = (uint8_t)month;
-  int data_day = (uint8_t)day;
-  int data_hour = (uint8_t)hours;
-  int data_minute = (uint8_t)minutes;
-  int data_second = (uint8_t)seconds;
+  // Convert to unsigned 8 bit integer rather than relying on type compiler defines for int
+  uint8_t data_year   = (uint8_t)year;
+  uint8_t data_month  = (uint8_t)month;
+  uint8_t data_day    = (uint8_t)day;
+  uint8_t data_hour   = (uint8_t)hours;
+  uint8_t data_minute = (uint8_t)minutes;
+  uint8_t data_second = (uint8_t)seconds;
   data_dst_next_month = (uint8_t)dst_next_month;
-  data_dst_next_day = (uint8_t)dst_next_day;
-  data_dst_next_hour = (uint8_t)dst_next_hour;
+  data_dst_next_day   = (uint8_t)dst_next_day;
+  data_dst_next_hour  = (uint8_t)dst_next_hour;
 
-  rtc.adjust(DateTime(data_year, data_month, data_day, data_hour, data_minute, data_second));
+  // Correct for time elapsed since the IRQ fired (i.e. the true second boundary).
+  // irq_ms was captured at the moment irq_status == 0x01 was detected, before
+  // any I2C reads occurred.  We advance the DateTime by however many whole seconds
+  // have elapsed since that capture, plus a small fudge (~10 ms) for the
+  // rtc.adjust() I2C write itself.  In practice this is usually 0 extra seconds
+  // but correctly handles the edge case where reads straddle a second boundary.
+  unsigned long elapsed_since_irq = (millis() - irq_ms) + 10;  // +10 ms fudge for rtc.adjust() write
+  DateTime corrected = DateTime(2000 + data_year, data_month, data_day,
+                                data_hour, data_minute, data_second)
+                       + TimeSpan((int32_t)(elapsed_since_irq / 1000));
+
+  rtc.adjust(corrected);
 }
 
 //------------------------------------------------------------------------------
@@ -1836,6 +1875,7 @@ int es100_receive(int dt_array[]) {
     sofar_time = millis();
     //endTime = millis();
     elapsedTime = sofar_time - beginTime;
+      wdt_reset_due();   // pet the watchdog
 
     lcd.print((double)(elapsedTime / 1000 / 60));
     //lcd.setCursor(0, 4);
@@ -1914,12 +1954,13 @@ int es100_receive(int dt_array[]) {
 
   if (irq_status == 0x01) {
     // Serial.print("IRQ status 0x01 received, now outside of while loop in function es100_receive(int dt_array[ ]) --------------------\n");
-    endTime = millis();
+    unsigned long irq_capture_ms = millis();  // capture as close to IRQ moment as possible, before any I2C reads
+    endTime = irq_capture_ms;
     elapsedTime = endTime - beginTime;
     if (time_inIRQ > time_inIRQ_limit) {
       sync_type = 0;
     } else {
-      es100_read_time(dt_array);
+      es100_read_time(dt_array, irq_capture_ms);  // pass IRQ timestamp so RTC can be corrected for I2C read delay
       time_here = 0;
     }
   }
@@ -2214,10 +2255,12 @@ void setup() {
   lcd_bright = ((lcd_pot_value * (255) / 1023));
   lcd_bright_dimm = lcd_bright / 3;
   analogWrite(8, lcd_bright);  // 128 is approximately 50% of 255
+
+  wdt_enable_due(240000);  // 4-second watchdog timeout
 }
 
 void loop() {
-
+  wdt_reset_due();   // ← add this line
   GPSloop_time();
   eb1.update();
   // onEb1Encoder();
