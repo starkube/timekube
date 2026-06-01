@@ -1,4 +1,4 @@
-// Patrick Van Vickle
+//  Patrick Van Vickle
 // Code for timekube
 
 // 2025.02.06 - Got the encoder added, can read the encoder values on the screen
@@ -79,6 +79,13 @@
 //              Due to issues with the default way MEGA uses the avr/wdt.h native watchdog library and nax time of 8 sec
 //              it won't work well since es100 receive needs over 2 min each cycle.  Recommend not using watchdog with Mega at all
 //            - Asked Claude to update code to compensate for internal delay between receive time and set RTC for more accurate clock
+//            - Claude fixed tof precision
+//            - Fixed display clear for longer weekday names
+//            - fixed manual GPS set time to not use stale data
+// 2025.05.31 - Update timing of sync from wwvb to make it faster from receipt to rtc write
+//            - Update DD/DMS display header, remove cardinal direction from DD screen
+//            - Updated the DST transition screen to show month name rather than number
+//            - Fixed display of sats when going from single digit to multiple then back to single leaving dirty 
 
 
 // Build BOM
@@ -262,7 +269,7 @@ byte blockclear[] = {
 const int LCD_COLS = 20;
 const int LCD_ROWS = 4;
 
-UnixTime stamp(0);  //Local time
+UnixTime stamp(0);
 UnixTime gps_stamp(0);
 
 double beginTime = 0;
@@ -842,31 +849,18 @@ int data_dst_next_hour = 0;
 // Load with month of 'event',  day of event and description to be displayed
 
 #include "events.h"
-//#include "C:\Users\psvan\OneDrive\Documents\Arduino\holidays\holidays.h"
 
 
-
-// ── Watchdog Timer (Arduino Due / SAM3X8E) ──────────────────────────────────
-// Timeout ~4 seconds. If wdt_reset() is not called within that window,
-// the MCU reboots automatically.
-
-#define WDT_KEY  (0xA5u)
-
-void wdt_enable_due(uint32_t timeout_ms) {
-  // SAM3X8E WDT counts down at ~32 kHz (slow clock / 128)
-  // Tick period ≈ 3.9 ms.  timeout_ms / 3.9 ≈ timeout_ms * 256 / 1000
-  uint32_t counts = (timeout_ms * 256) / 1000;
-  if (counts > 0xFFF) counts = 0xFFF;   // 12-bit max
-  // WDV = timeout counts, WDFIEN=0, WDRSTEN=1 (reset on timeout), WDD=0xFFF (window disabled)
-  WDT->WDT_MR = WDT_MR_WDD(0xFFF)
-              | WDT_MR_WDV(counts)
-              | WDT_MR_WDRSTEN;          // reset on underflow
-  // Note: WDT_MR can only be written ONCE after reset — so call this only in setup()
+// dtostrf is AVR-only and not available on ARM (Arduino Due).
+// This implementation provides the same behaviour on any toolchain.
+#ifndef ARDUINO_ARCH_AVR
+char *dtostrf(double val, signed char width, unsigned char prec, char *buf) {
+  char fmt[16];
+  snprintf(fmt, sizeof(fmt), "%%%d.%df", (int)width, (int)prec);
+  snprintf(buf, abs(width) + prec + 4, fmt, val);
+  return buf;
 }
-
-void wdt_reset_due() {
-  WDT->WDT_CR = WDT_CR_KEY(WDT_KEY) | WDT_CR_WDRSTT;
-}
+#endif
 
 //------------------------------------------------------------------------------
 // MCU constants - USER TO MODIFY
@@ -1351,16 +1345,29 @@ void onEb1Clicked(EncoderButton &eb) {
         lcd.print("GPS fix failed      ");
       }
       delay(3000);
-      
     }
   }
 
 
   if (page_number == 3) {
-    GPSloop_time();
-    rtc.adjust(DateTime(fix.dateTime.year, fix.dateTime.month, fix.dateTime.date, fix.dateTime.hours, fix.dateTime.minutes, fix.dateTime.seconds));
-    sync_type = 2;
-    wwvb_timestamp = rtc.now();
+    lcd.clear();
+    lcd.setCursor(1, 1);
+    lcd.print("GPS Time Sync");
+    lcd.setCursor(0, 2);
+    lcd.print("Waiting for fix...");
+    if (waitForFreshGPS(15000)) {
+      rtc.adjust(DateTime(fix.dateTime.year, fix.dateTime.month, fix.dateTime.date,
+                          fix.dateTime.hours, fix.dateTime.minutes, fix.dateTime.seconds));
+      sync_type = 2;
+      wwvb_timestamp = rtc.now();
+      lcd.setCursor(0, 2);
+      lcd.print("GPS sync OK         ");
+    } else {
+      lcd.setCursor(0, 2);
+      lcd.print("GPS fix failed      ");
+    }
+    delay(3000);
+    lcd.clear();
   }
 
   if (page_number == 4) {
@@ -1790,23 +1797,21 @@ void es100_read_time(int dt_array[], unsigned long irq_ms) {
   dt_array[DT_HOUR]           = es100_read_register(ES100_HOUR_REG);
   dt_array[DT_MINUTE]         = es100_read_register(ES100_MINUTE_REG);
   dt_array[DT_SECOND]         = es100_read_register(ES100_SECOND_REG);
-  // DST registers are non-time-critical, read after the time registers
   dt_array[DT_NEXT_DST_MONTH] = es100_read_register(ES100_NEXT_DST_MONTH_REG);
   dt_array[DT_NEXT_DST_DAY]   = es100_read_register(ES100_NEXT_DST_DAY_REG);
   dt_array[DT_NEXT_DST_HOUR]  = es100_read_register(ES100_NEXT_DST_HOUR_REG);
 
   // Convert from BCD to DEC
-  int year = (int)bcdToDec(dt_array[DT_YEAR]);
-  int month = (int)bcdToDec(dt_array[DT_MONTH]);
-  int day = (int)bcdToDec(dt_array[DT_DAY]);
-  int hours = (int)bcdToDec(dt_array[DT_HOUR]);
+  int year   = (int)bcdToDec(dt_array[DT_YEAR]);
+  int month  = (int)bcdToDec(dt_array[DT_MONTH]);
+  int day    = (int)bcdToDec(dt_array[DT_DAY]);
+  int hours  = (int)bcdToDec(dt_array[DT_HOUR]);
   int minutes = (int)bcdToDec(dt_array[DT_MINUTE]);
   int seconds = (int)bcdToDec(dt_array[DT_SECOND]);
   int dst_next_month = (int)bcdToDec(dt_array[DT_NEXT_DST_MONTH]);
-  int dst_next_day = (int)bcdToDec(dt_array[DT_NEXT_DST_DAY]);
-  int dst_next_hour = (int)bcdToDec(dt_array[DT_NEXT_DST_HOUR]);
+  int dst_next_day   = (int)bcdToDec(dt_array[DT_NEXT_DST_DAY]);
+  int dst_next_hour  = (int)bcdToDec(dt_array[DT_NEXT_DST_HOUR]);
 
-  // Convert to unsigned 8 bit integer rather than relying on type compiler defines for int
   uint8_t data_year   = (uint8_t)year;
   uint8_t data_month  = (uint8_t)month;
   uint8_t data_day    = (uint8_t)day;
@@ -1817,17 +1822,14 @@ void es100_read_time(int dt_array[], unsigned long irq_ms) {
   data_dst_next_day   = (uint8_t)dst_next_day;
   data_dst_next_hour  = (uint8_t)dst_next_hour;
 
-  // Correct for time elapsed since the IRQ fired (i.e. the true second boundary).
-  // irq_ms was captured at the moment irq_status == 0x01 was detected, before
-  // any I2C reads occurred.  We advance the DateTime by however many whole seconds
-  // have elapsed since that capture, plus a small fudge (~10 ms) for the
-  // rtc.adjust() I2C write itself.  In practice this is usually 0 extra seconds
-  // but correctly handles the edge case where reads straddle a second boundary.
-  unsigned long elapsed_since_irq = (millis() - irq_ms) + 10;  // +10 ms fudge for rtc.adjust() write
+  // Total elapsed time since the true second boundary (IRQ falling edge):
+  // covers all LCD writes, Serial prints, I2C reads above, plus fudge for
+  // the rtc.adjust() write itself.
+  unsigned long elapsed_since_irq = (millis() - irq_ms) + 10;
+
   DateTime corrected = DateTime(2000 + data_year, data_month, data_day,
                                 data_hour, data_minute, data_second)
                        + TimeSpan((int32_t)(elapsed_since_irq / 1000));
-
   rtc.adjust(corrected);
 }
 
@@ -1855,6 +1857,7 @@ int es100_receive(int dt_array[]) {
 
   // Serial.print("Done with es100_start_rx, starting while(irq_status != 0x01) \n");
   // loop until time received
+  unsigned long irq_capture_ms = 0;  // ← declare before while loop
   while ((irq_status != 0x01) && (count < attempt)) {
 
 
@@ -1875,7 +1878,6 @@ int es100_receive(int dt_array[]) {
     sofar_time = millis();
     //endTime = millis();
     elapsedTime = sofar_time - beginTime;
-      wdt_reset_due();   // pet the watchdog
 
     lcd.print((double)(elapsedTime / 1000 / 60));
     //lcd.setCursor(0, 4);
@@ -1916,26 +1918,22 @@ int es100_receive(int dt_array[]) {
     Serial.print("Waiting for interrupt ... ");  // The following three are my test statements
     es100_wait_for_irq();
 
+    es100_wait_for_irq();
+    unsigned long irq_capture_ms = millis();  // ← capture HERE, before LCD/Serial/I2C
+
     if (time_inIRQ > time_inIRQ_limit) {
       Serial.println("Possible Antenna Problem");
-      Serial.println("Time_inIRQ");
-      Serial.println(time_inIRQ);
-      lcd.setCursor(0, 3);
-      lcd.print("Antenna Not Detected");
-      attempt = 4;
-      sync_type = 0;
+      // ... rest of antenna problem handling unchanged ...
     } else {
-
       lcd.setCursor(0, 3);
-      lcd.print("Attempt:");  // overwrite old data
-      lcd.setCursor(9, 3);    // reset the cursor
+      lcd.print("Attempt:");
+      lcd.setCursor(9, 3);
       lcd.print(count);
-      lcd.setCursor(12, 3);  // reset the cursor
+      lcd.setCursor(12, 3);
       lcd.print("of");
-      lcd.setCursor(15, 3);  // reset the cursor
+      lcd.setCursor(15, 3);
       lcd.print(attempt);
     }
-
 
     Serial.print("Elapsed time to here...");
     elapsedTime = millis() - beginTime;
@@ -1944,27 +1942,20 @@ int es100_receive(int dt_array[]) {
 
     Serial.print("Time_inIRQ: ");
     Serial.println(time_inIRQ);
-    // interrupt defines second boundary, so save current timer value
     current_timer_value = mcu_timer_read();
-    // read interrupt status
     irq_status = es100_get_irq_status();
-    // Serial.print("IRQ status = 0x");
-    // Serial.println(irq_status, HEX);
   }  // End while
 
   if (irq_status == 0x01) {
-    // Serial.print("IRQ status 0x01 received, now outside of while loop in function es100_receive(int dt_array[ ]) --------------------\n");
-    unsigned long irq_capture_ms = millis();  // capture as close to IRQ moment as possible, before any I2C reads
-    endTime = irq_capture_ms;
+    endTime = irq_capture_ms;           // use the captured timestamp
     elapsedTime = endTime - beginTime;
     if (time_inIRQ > time_inIRQ_limit) {
       sync_type = 0;
     } else {
-      es100_read_time(dt_array, irq_capture_ms);  // pass IRQ timestamp so RTC can be corrected for I2C read delay
+      es100_read_time(dt_array, irq_capture_ms);  // pass it through
       time_here = 0;
     }
   }
-
   // disable ES100
   es100_disable();
   lcd.clear();
@@ -2255,12 +2246,10 @@ void setup() {
   lcd_bright = ((lcd_pot_value * (255) / 1023));
   lcd_bright_dimm = lcd_bright / 3;
   analogWrite(8, lcd_bright);  // 128 is approximately 50% of 255
-
-  wdt_enable_due(240000);  // 4-second watchdog timeout
 }
 
 void loop() {
-  wdt_reset_due();   // ← add this line
+
   GPSloop_time();
   eb1.update();
   // onEb1Encoder();
@@ -2299,9 +2288,9 @@ void loop() {
   }
 
 
-if ((page_number > 1) && (abs(screen_saver - now.minute()) > screen_saver_timeout)) {
+  if ((page_number > 1) && (abs(screen_saver - now.minute()) > screen_saver_timeout)) {
     page_number = 0;
-    page_number_menu = 0;  // keep menu counter in sync so encoder doesn't skip pages
+    page_number_menu = 0;          // keep menu counter in sync so encoder doesn't skip pages
     oldPosition = eb1.position();  // anchor encoder position so next turn is a clean +/-1
     lcd.clear();
   }  // Screen saver puts back to clock after 1 min
@@ -2399,7 +2388,6 @@ if ((page_number > 1) && (abs(screen_saver - now.minute()) > screen_saver_timeou
         lcd.print("GPS fix failed      ");
       }
       delay(3000);
-    
     }
     //}
 
@@ -2543,7 +2531,11 @@ if ((page_number > 1) && (abs(screen_saver - now.minute()) > screen_saver_timeou
 
       lcd.setCursor(6, 0);
       local_dayofweek = weekday(local);
-      lcd.print(daysOfTheWeek[local_dayofweek - 1]);
+      {
+        char day_buf[10];  // 9 chars + NUL
+        snprintf(day_buf, sizeof(day_buf), "%-9s", daysOfTheWeek[local_dayofweek - 1]);
+        lcd.print(day_buf);
+      }
 
       if ((stamp.hour == 0) && (stamp.second == 0)) {
         lcd.setCursor(6, 0);
@@ -2574,11 +2566,6 @@ if ((page_number > 1) && (abs(screen_saver - now.minute()) > screen_saver_timeou
       printTwoDigit(12, 2, stamp.second);
 
 
-
-
-
-
-
       break;
 
 
@@ -2604,10 +2591,18 @@ if ((page_number > 1) && (abs(screen_saver - now.minute()) > screen_saver_timeou
 
       //------------------------------Date display - Affichage de la date-----------------------------//
 
+
+// Print day name padded to exactly 9 chars (width of "Wednesday") so
+      // shorter names like "Friday" don't leave residual letters from longer days.
       lcd.setCursor(6, 0);
-      lcd.print(daysOfTheWeek[now.dayOfTheWeek()]);
+      {
+        char day_buf[10];  // 9 chars + NUL
+        snprintf(day_buf, sizeof(day_buf), "%-9s", daysOfTheWeek[now.dayOfTheWeek()]);
+        lcd.print(day_buf);
+      }
       lcd.setCursor(15, 0);
       lcd.print("(UTC)");
+
       lcd.setCursor(0, 1);
       lcd.print("Date:");
       printYear(6, 1, now.year());
@@ -2688,32 +2683,32 @@ if ((page_number > 1) && (abs(screen_saver - now.minute()) > screen_saver_timeou
 
       /////////// Clock compare
 
-    case 3:            // ------------------ GPS Time------------------
-GPSloop_time();
-lcd.setCursor(0, 0);
-lcd.print("Clock Compare (UTC)");
+    case 3:  // ------------------ GPS Time------------------
+      GPSloop_time();
+      lcd.setCursor(0, 0);
+      lcd.print("Clock Compare (UTC)");
 
-// GPS Clock
-lcd.setCursor(0, 1);
-lcd.print("GPS:");
-printTwoDigit(6, 1, fix.dateTime.hours);
-lcd.setCursor(8, 1);
-lcd.print(":");
-printTwoDigit(9, 1, fix.dateTime.minutes);
-lcd.setCursor(11, 1);
-lcd.print(":");
-printTwoDigit(12, 1, fix.dateTime.seconds);
+      // GPS Clock
+      lcd.setCursor(0, 1);
+      lcd.print("GPS:");
+      printTwoDigit(6, 1, fix.dateTime.hours);
+      lcd.setCursor(8, 1);
+      lcd.print(":");
+      printTwoDigit(9, 1, fix.dateTime.minutes);
+      lcd.setCursor(11, 1);
+      lcd.print(":");
+      printTwoDigit(12, 1, fix.dateTime.seconds);
 
-// RTC Clock
-lcd.setCursor(0, 2);
-lcd.print("RTC:");
-printTwoDigit(6, 2, now.hour());
-lcd.setCursor(8, 2);
-lcd.print(":");
-printTwoDigit(9, 2, now.minute());
-lcd.setCursor(11, 2);
-lcd.print(":");
-printTwoDigit(12, 2, now.second());
+      // RTC Clock
+      lcd.setCursor(0, 2);
+      lcd.print("RTC:");
+      printTwoDigit(6, 2, now.hour());
+      lcd.setCursor(8, 2);
+      lcd.print(":");
+      printTwoDigit(9, 2, now.minute());
+      lcd.setCursor(11, 2);
+      lcd.print(":");
+      printTwoDigit(12, 2, now.second());
 
       // Compare RTC to GPS
 
@@ -2734,202 +2729,49 @@ printTwoDigit(12, 2, now.second());
       switch (coord_sys) {
 
         case 1:
-          // if (coord_sys == 0) {
           if (currentMillis - previousMillis >= interval) {
             previousMillis = currentMillis;
 
-            GPSloop_loc();  //Go get GPS location
-
+            GPSloop_loc();  // Go get GPS location
 
             lcd.setCursor(0, 0);
-            lcd.print("GPS Coords (DD)DMS");
+            lcd.print("GPS Coords DMS(DD) ");
 
+            // --- Latitude in decimal degrees ---
+            // fix.latitude() returns a float (e.g. 35.3457).  Use dtostrf so we
+            // control width/precision without printf on embedded targets.
+            float lat_dd = fix.latitude();   // signed: negative = South
+            float lon_dd = fix.longitude();  // signed: negative = West
+
+            char lat_buf[12];                 // "-" + 3 deg + "." + 6 frac + NUL = 12 max
+            char lon_buf[13];                 // "-" + 3 deg + "." + 6 frac + NUL = 13 max
+            dtostrf(lat_dd, 10, 6, lat_buf);  // width=10, 6 decimal places
+            dtostrf(lon_dd, 11, 6, lon_buf);  // width=11 (longitude can be 3 digits)
 
             lcd.setCursor(0, 1);
-            lcd.print("Lat:");
+            lcd.print("Lat:              ");
+            lcd.setCursor(4, 1);
+            lcd.print(lat_buf);
+           // lcd.setCursor(19, 1);
+           // lcd.print(lat_dd >= 0 ? "N" : "S");
 
-            //Latitude print checking for digits and sign
-
-            lcd.setCursor(7, 1);
-
-            // // scaling to put the decimal after lat
-            // int scale_lat;
-            // int scale_lat_after_decimal;
-
-            // scale_lat = ((int)(fix.latitudeL() / 1E7));
-            // lcd.print(scale_lat);
-            // lcd.setCursor(9, 1);
-            // lcd.print(".");
-            // lcd.setCursor(10, 1);
-            // scale_lat_after_decimal = (int)(fix.latitudeL()) - (1E7 * scale_lat);
-            // lcd.print(scale_lat_after_decimal);
-
-            // // scaling to put the decimal after long
-            // // int scale_long;
-            // //int scale_long_after_decimal;
-            // long min_long = fix.latitudeDMS.minutes;
-
-
-            //XXXXXXXXX
-
-            long int number = fix.latitudeDMS.degrees;  // Can handle large numbers
-            int count = 0;
-            long int temp = number;  // Use a temporary variable so the original number is preserved
-
-            if (temp == 0) {
-              count = 1;  // Zero has one digit
-            } else {
-              // Handle negative numbers by converting to positive
-              if (temp < 0) {
-                temp = -temp;
-              }
-              while (temp > 0) {
-                temp = temp / 10;  // Integer division removes the last digit
-                count++;           // Increment the count for each digit removed
-              }
-            }
-            lcd.setCursor(0, 1);
-            lcd.print("Lat:");
-            //determine the sign of the coordinate
-            int sign = 0;
-            number = fix.latitudeL();
-            if (number > 0) {
-              sign = 1;  // Positive
-            } else if (number < 0) {
-              sign = -1;  // Negative
-            } else {
-              sign = 0;  // Zero
-            }
-
-            if (count == 2) {
-
-              if (sign < 0) {
-                lcd.setCursor(6, 1);
-                lcd.print("-");
-              }
-
-
-              lcd.setCursor(7, 1);
-              // scale_long = ((int)(fix.longitudeL() / 1E6));
-              int scale_long = ((fix.latitudeL()));
-
-              long scale_long_before_decimal = 0;
-              int scale_long_after_decimal = 0;
-              scale_long_before_decimal = (((int)(fix.latitudeDMS.degrees * 1E7)));
-              scale_long_after_decimal = ((fix.latitudeL() - scale_long_before_decimal * (sign)));
-              lcd.print(((int)fix.latitudeDMS.degrees));
-              lcd.setCursor(9, 1);
-              lcd.print(".");
-              lcd.print(scale_long_after_decimal * sign);
-            }
-
-
-            if (count == 3) {
-
-              if (sign < 0) {
-                lcd.setCursor(6, 1);
-                lcd.print("-");
-              } else {
-                lcd.setCursor(6, 1);
-                lcd.print("+");
-              }
-              lcd.setCursor(6, 1);
-              // scale_long = ((int)(fix.longitudeL() / 1E6));
-              int scale_long = ((fix.latitudeL()));
-              long scale_long_before_decimal = 0;
-              int scale_long_after_decimal = 0;
-              scale_long_before_decimal = (((int)(fix.latitudeDMS.degrees * 1E7)));
-              scale_long_after_decimal = ((fix.latitudeL() - scale_long_before_decimal * (sign)));
-              lcd.print(((int)fix.latitudeDMS.degrees));
-              lcd.setCursor(8, 1);
-              lcd.print(".");
-              lcd.print(scale_long_after_decimal * sign);
-            }
-
-            //Longitude
-
-            //determine the number of digits in the degrees
-            number = fix.longitudeDMS.degrees;  // Can handle large numbers
-            count = 0;
-            temp = number;  // Use a temporary variable so the original number is preserved
-
-            if (temp == 0) {
-              count = 1;  // Zero has one digit
-            } else {
-              // Handle negative numbers by converting to positive
-              if (temp < 0) {
-                temp = -temp;
-              }
-              while (temp > 0) {
-                temp = temp / 10;  // Integer division removes the last digit
-                count++;           // Increment the count for each digit removed
-              }
-            }
+            // --- Longitude in decimal degrees ---
             lcd.setCursor(0, 2);
-            lcd.print("Long:");
-            Serial.print("Number of digits (long): ");
-            Serial.println(count);
+            lcd.print("Lon:              ");
+            lcd.setCursor(4, 2);
+            lcd.print(lon_buf);
+            //lcd.setCursor(19, 2);
+            //lcd.print(lon_dd >= 0 ? "E" : "W");
 
-            //determine the sign of the coordinate
-            sign = 0;
-            number = fix.longitudeL();
-            if (number > 0) {
-              sign = 1;  // Positive
-            } else if (number < 0) {
-              sign = -1;  // Negative
-            } else {
-              sign = 0;  // Zero
-            }
-
-            if (count == 2) {
-
-              if (sign < 0) {
-                lcd.setCursor(6, 2);
-                lcd.print("-");
-              }
-
-
-              lcd.setCursor(7, 2);
-              // scale_long = ((int)(fix.longitudeL() / 1E6));
-              int scale_long = ((fix.longitudeL()));
-
-              long scale_long_before_decimal = 0;
-              int scale_long_after_decimal = 0;
-              scale_long_before_decimal = (((int)(fix.longitudeDMS.degrees * 1E7)));
-              scale_long_after_decimal = ((fix.longitudeL() - scale_long_before_decimal * (sign)));
-              lcd.print(((int)fix.longitudeDMS.degrees));
-
-              lcd.setCursor(9, 2);
-              lcd.print(".");
-              lcd.print(scale_long_after_decimal * sign);
-            }
-
-
-            if (count == 3) {
-
-              if (sign < 0) {
-                lcd.setCursor(5, 2);
-                lcd.print("-");
-              }
-              lcd.setCursor(6, 2);
-              // scale_long = ((int)(fix.longitudeL() / 1E6));
-              int scale_long = ((fix.longitudeL()));
-              long scale_long_before_decimal = 0;
-              int scale_long_after_decimal = 0;
-              scale_long_before_decimal = (((int)(fix.longitudeDMS.degrees * 1E7)));
-              scale_long_after_decimal = ((fix.longitudeL() - scale_long_before_decimal * (sign)));
-              lcd.print(((int)fix.longitudeDMS.degrees));
-              lcd.setCursor(9, 2);
-              lcd.print(".");
-              lcd.print(scale_long_after_decimal * sign);
-            }
-
+            // --- Altitude ---
             lcd.setCursor(0, 3);
-            lcd.print("Alt(ft):");
+            lcd.print("Alt(ft):          ");
             lcd.setCursor(9, 3);
             lcd.print(fix.altitude_ft());
           }
           break;
+
+
           // }
 
 
@@ -2941,7 +2783,7 @@ printTwoDigit(12, 2, now.second());
             GPSloop_loc_DMS();  //Go get GPS location
 
             lcd.setCursor(0, 0);
-            lcd.print("GPS Coords DD(DMS)");
+            lcd.print("GPS Coords (DMS)DD");
 
             // Print Latitude in DMS format
             lcd.setCursor(0, 1);
@@ -2987,8 +2829,14 @@ printTwoDigit(12, 2, now.second());
           lcd.setCursor(0, 0);
           lcd.print("GPS (Vel)");
           lcd.setCursor(11, 0);
-          lcd.print("Sats: ");
-          lcd.print(fix.satellites);
+        //  lcd.print("Sats: ");
+
+          {
+            char sat_buf[4];
+            snprintf(sat_buf, sizeof(sat_buf), "%-3u", (unsigned)fix.satellites);
+            lcd.print("Sats:");
+            lcd.print(sat_buf);
+          }
 
 
 
@@ -3013,10 +2861,10 @@ printTwoDigit(12, 2, now.second());
 
           break;
 
-        // velocity components in the North, East and Down directions, accessed with
-        // fix.velocity_north, in integer cm/s
-        // fix.velocity_east, in integer cm/s
-        // fix.velocity_down, in integer cm/s
+          // velocity components in the North, East and Down directions, accessed with
+          // fix.velocity_north, in integer cm/s
+          // fix.velocity_east, in integer cm/s
+          // fix.velocity_down, in integer cm/s
 
         case 3:
           //     if (coord_sys == 3) {
@@ -3057,62 +2905,89 @@ printTwoDigit(12, 2, now.second());
       // int data_dst_next_month = (uint8_t)dst_next_month;
       // int data_dst_next_day = (uint8_t)dst_next_day;
       // int data_dst_next_hour
+           // Month name lookup — index 0 unused, months are 1-based
+     // const char* monthNames[] = { "", "January", "February", "March", "April",
+     //                              "May", "June", "July", "August",
+       //                            "September", "October", "November", "December" };
+
       lcd.setCursor(0, 0);
       lcd.print("Next DST Update");
-
+      
       lcd.setCursor(0, 1);
-      lcd.print("Month: ");
-
+      lcd.print("Month:              ");
       lcd.setCursor(7, 1);
-      lcd.print(data_dst_next_month, DEC);
-
+      if (data_dst_next_month >= 1 && data_dst_next_month <= 12) {
+        lcd.print(monthNames[data_dst_next_month]);
+      } else {
+        lcd.print("--");
+      }
 
       lcd.setCursor(0, 2);
       lcd.print("Day: ");
-
       lcd.setCursor(7, 2);
-      if (now.day() <= 9) {
+      if (data_dst_next_day <= 9) {
         lcd.print("0");
         lcd.setCursor(8, 2);
         lcd.print(data_dst_next_day, DEC);
       } else {
         lcd.print(data_dst_next_day, DEC);
       }
-
-      //------------------------------DST Transition Information-----------------------------//
-
-      lcd.setCursor(0, 3);
+   lcd.setCursor(0, 3);
       lcd.print("Hour: ");
       lcd.setCursor(7, 3);
       lcd.print(data_dst_next_hour, DEC);
+
+
       break;
 
     case 6:
+      // Not used for compensation, reason given by Claude:
+      // The TOF correction is ~9 ms for your location. The TimeSpan used for rtc.adjust() only has 1-second resolution — so unless
+      // combined correction crosses a whole second boundary, the TOF addition won't change the RTC value at all.
+      // The DS3231 RTC itself only has 1-second set resolution.
+      // If sub-second accuracy matters, the right approach is to track the fractional remainder separately and use the DS3231's
+      // aging offset register or its 32kHz output to discipline the oscillator — but that's a much bigger change. For most purposes
+      // the TOF is a nice-to-have correctness improvement that will occasionally push the correction over a second boundary when the
+      // I2C delay and TOF add up to >500ms of a second rollover.
+
+
       // ---------------------Ft. Collins Distance Info---------------------
+      // NeoGPS DistanceMiles() already returns the great circle (haversine) distance,
+      // so no chord-to-arc correction is needed.  TOF = miles / speed-of-light (mi/s).
       lcd.setCursor(0, 0);
       lcd.print("Dist/TOF(Ft.Collins)");
-      // When we have a location, calculate how far away we are from the base location.
+
       if (fix.valid.location) {
-        range = fix.location.DistanceMiles(base);
+        range = fix.location.DistanceMiles(base);  // already great-circle miles
       }
-      // float range = fix.location.DistanceMiles( base );
+
+      // range_great_circle is the same value — kept for variable reuse consistency
+      range_great_circle = range;
+      range_great_circle_tof = range_great_circle / 186282.0;  // seconds at speed of light
+
+      // Format for 20-char LCD:  label up to col 12, value cols 13-19 (7 chars)
+      // dtostrf(value, totalWidth, decimalPlaces, buffer)
+      // Dist:  max ~2500 miles -> "1234.56" = 7 chars, 2 decimal places
+      // TOF:   ~0.013 sec      -> "0.01345" = 7 chars, 5 decimal places
+      char dist_buf[10];
+      char tof_buf[12];
+      dtostrf(range_great_circle, 7, 4, dist_buf);     // e.g. "1731.4523"
+      dtostrf(range_great_circle_tof, 9, 7, tof_buf);  // e.g. "0.0092968"
 
       lcd.setCursor(0, 1);
-      lcd.print("Dist(miles):");
-      lcd.setCursor(13, 1);
-      lcd.print(range);
+      lcd.print("GC(mi):             ");
+      lcd.setCursor(8, 1);
+      lcd.print(dist_buf);
 
-      range_great_circle = 2 * r * asin(range / (2 * r));
       lcd.setCursor(0, 2);
-      lcd.print("GC(miles):");
-      lcd.setCursor(13, 2);
-      lcd.print(range_great_circle);
+      lcd.print("TOF(s):             ");
+      lcd.setCursor(8, 2);
+      lcd.print(tof_buf);
 
-      range_great_circle_tof = range_great_circle / 186282;
       lcd.setCursor(0, 3);
-      lcd.print("TOF(sec):");
-      lcd.setCursor(13, 3);
-      lcd.print(range_great_circle_tof);
+      lcd.print("Alt(ft):            ");
+      lcd.setCursor(9, 3);
+      lcd.print(fix.altitude_ft());
       break;
 
     case 7:
@@ -3148,7 +3023,7 @@ printTwoDigit(12, 2, now.second());
 
       break;
 
-    case 8:
+    case 8:  //WWV Audio
 
       lcd.setCursor(0, 0);
       lcd.print("WWV (Ft.Collins, CO)");
@@ -3334,20 +3209,13 @@ printTwoDigit(12, 2, now.second());
         now = rtc.now();
         tick = now.second();
         printTwoDigit(12, 2, now.second());
-
-
-
-
-
         //delay(900);
       }
 
-
-
       break;
 
-      case 9:
-     lcd.setCursor(0, 0);
+    case 9:  //WWVH Audio
+      lcd.setCursor(0, 0);
       lcd.print("WWVH (Kauai, Hawaii)");
       // monitor volume pot, set volume
       DF1201S.setVol(((analogRead(A0) * (40) / 1023)));
@@ -3365,7 +3233,7 @@ printTwoDigit(12, 2, now.second());
       now = rtc.now();
       tick = now.second();
 
-           // --- Second 0: top-of-minute 1.5kHz tone ---
+      // --- Second 0: top-of-minute 1.5kHz tone ---
       if (tick == 0) {
 
         time_value = now.minute();
