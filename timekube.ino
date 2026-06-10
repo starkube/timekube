@@ -82,10 +82,10 @@
 //            - Claude fixed tof precision
 //            - Fixed display clear for longer weekday names
 //            - fixed manual GPS set time to not use stale data
-// 2025.05.31 - Update timing of sync from wwvb to make it faster from receipt to rtc write
-//            - Update DD/DMS display header, remove cardinal direction from DD screen
-//            - Updated the DST transition screen to show month name rather than number
-//            - Fixed display of sats when going from single digit to multiple then back to single leaving dirty 
+// 2025.06.10 - added in fix to sync rtc from wwvb within milliseconds
+//            - added in sun, moon, and twilight calcs based on GPS coords, if no GPS fix then middle local timezone coords
+//            - updated 'next DST transition' page to show both calculated hard coded and also if there was receipt from WWVB
+//              -  
 
 
 // Build BOM
@@ -184,6 +184,12 @@ DFRobot_DF1201S DF1201S;       // audio board
 
 #include <Timezone.h>  // https://github.com/JChristensen/Timezone
 #include <UnixTime.h>
+
+
+//uint8_t page_number=0; // tried this variable type due to issues with switch statement
+// Forward struct declaration needed before Arduino IDE generates function prototypes
+struct SolarTimes { float sunrise; float sunset; float noon; };  // minutes from midnight UTC
+
 
 //moon character for dimmer mode
 byte customChar[] = {
@@ -798,31 +804,31 @@ DateTime wwvb_timestamp;
 //Menu Encoder setup
 EncoderButton eb1(2, 3, 4);
 //int encoderPosition;
-int encoderdiff;
-int menuSize = 10;
-int currentPosition;
+
+int menuSize = 13;
+
 int newPosition = 0;
 
 
 
-//uint8_t page_number=0; // tried this variable type due to issues with switch statement
+
+
 int page_number = 0;
 int page_number_menu = 0;
+int astro_time_sys = 0;  // 0 = show Local time, 1 = show UTC (toggled by click on pages 7/8/9)
+
+// WWVB RTC update delay (ms). The decoded time is correct at the IRQ moment
+// but processing takes ~500ms before rtc.adjust() fires. We wait this long
+// after the IRQ, then set the RTC to decoded_time + 1 second so the clock
+// ticks in cleanly on the next whole second. Tune this value if the RTC
+// still leads or lags after a sync.
+unsigned long wwvb_rtc_delay = 1100;  // ms — default 500ms
 int timezone_count = 0;
 int timezone_count_num = 0;
 int value = 0;
-int value2 = 0;
-
-
 int tick = 0;
-int last_tick = 0;
 int last = 0;
-int last2 = 0;
 int screen_saver = 0;
-
-int is_playing = 0;
-const char *dir_part_v = "/v/";
-const char *dir_part_h = "/h/";
 int time_value = 0;
 const char *mp3_ext = ".mp3";
 //String finalString = "";
@@ -983,7 +989,7 @@ void onEb1LongPress(EncoderButton &eb) {
     DF1201S.playSpecFile("/cv_full.mp3");
   }
 
-  if (page_number == 8) {
+  if (page_number == 11) {
 
     // monitor volume pot, set volume
     DF1201S.setVol(((analogRead(A0) * (40) / 1023)));
@@ -997,7 +1003,7 @@ void onEb1LongPress(EncoderButton &eb) {
     unsigned long elapsedTime = millis();
     elapsedTime = millis() - startTime;
 
-    while ((elapsedTime < 487000) && (page_number == 8)) {
+    while ((elapsedTime < 487000) && (page_number == 11)) {
       elapsedTime = millis() - startTime;
 
       //break if encoder changes
@@ -1044,7 +1050,7 @@ void onEb1LongPress(EncoderButton &eb) {
     }
   }
 
-  if (page_number == 9) {
+  if (page_number == 12) {
 
     // monitor volume pot, set volume
     DF1201S.setVol(((analogRead(A0) * (40) / 1023)));
@@ -1058,7 +1064,7 @@ void onEb1LongPress(EncoderButton &eb) {
     unsigned long elapsedTime = millis();
     elapsedTime = millis() - startTime;
 
-    while ((elapsedTime < 588000) && (page_number == 9)) {
+    while ((elapsedTime < 588000) && (page_number == 12)) {
       elapsedTime = millis() - startTime;
 
       //break if encoder changes
@@ -1113,7 +1119,7 @@ void onEb1DoubleClicked(EncoderButton &eb) {
 
 
 
-  if (page_number == 8) {
+  if (page_number == 11) {
     // monitor volume pot, set volume
     DF1201S.setVol(((analogRead(A0) * (40) / 1023)));
 
@@ -1179,7 +1185,7 @@ void onEb1DoubleClicked(EncoderButton &eb) {
 
 
 
-  if (page_number == 9) {
+  if (page_number == 12) {
 
     // monitor volume pot, set volume
     DF1201S.setVol(((analogRead(A0) * (40) / 1023)));
@@ -1376,8 +1382,13 @@ void onEb1Clicked(EncoderButton &eb) {
     lcd.clear();
   }
 
+  if (page_number == 7 || page_number == 8 || page_number == 9) {
+    astro_time_sys = !astro_time_sys;  // toggle Local <-> UTC
+    lcd.clear();
+  }
 
-  if (page_number == 7) {
+
+  if (page_number == 10) {
 
     // Need to determine where in the stack we are currently
     int iii = 0;
@@ -1415,7 +1426,7 @@ void onEb1Clicked(EncoderButton &eb) {
   }
 
 
-  if (page_number == 8) {
+  if (page_number == 11) {
     // monitor volume pot, set volume
     DF1201S.setVol(((analogRead(A0) * (40) / 1023)));
 
@@ -1507,7 +1518,7 @@ void onEb1Clicked(EncoderButton &eb) {
     }
   }
 
-  if (page_number == 9) {
+  if (page_number == 12) {
 
     // monitor volume pot, set volume
     DF1201S.setVol(((analogRead(A0) * (40) / 1023)));
@@ -1802,16 +1813,17 @@ void es100_read_time(int dt_array[], unsigned long irq_ms) {
   dt_array[DT_NEXT_DST_HOUR]  = es100_read_register(ES100_NEXT_DST_HOUR_REG);
 
   // Convert from BCD to DEC
-  int year   = (int)bcdToDec(dt_array[DT_YEAR]);
-  int month  = (int)bcdToDec(dt_array[DT_MONTH]);
-  int day    = (int)bcdToDec(dt_array[DT_DAY]);
-  int hours  = (int)bcdToDec(dt_array[DT_HOUR]);
-  int minutes = (int)bcdToDec(dt_array[DT_MINUTE]);
-  int seconds = (int)bcdToDec(dt_array[DT_SECOND]);
+  int year        = (int)bcdToDec(dt_array[DT_YEAR]);
+  int month       = (int)bcdToDec(dt_array[DT_MONTH]);
+  int day         = (int)bcdToDec(dt_array[DT_DAY]);
+  int hours       = (int)bcdToDec(dt_array[DT_HOUR]);
+  int minutes     = (int)bcdToDec(dt_array[DT_MINUTE]);
+  int seconds     = (int)bcdToDec(dt_array[DT_SECOND]);
   int dst_next_month = (int)bcdToDec(dt_array[DT_NEXT_DST_MONTH]);
   int dst_next_day   = (int)bcdToDec(dt_array[DT_NEXT_DST_DAY]);
   int dst_next_hour  = (int)bcdToDec(dt_array[DT_NEXT_DST_HOUR]);
 
+  // Convert to unsigned 8-bit integer
   uint8_t data_year   = (uint8_t)year;
   uint8_t data_month  = (uint8_t)month;
   uint8_t data_day    = (uint8_t)day;
@@ -1822,14 +1834,28 @@ void es100_read_time(int dt_array[], unsigned long irq_ms) {
   data_dst_next_day   = (uint8_t)dst_next_day;
   data_dst_next_hour  = (uint8_t)dst_next_hour;
 
-  // Total elapsed time since the true second boundary (IRQ falling edge):
-  // covers all LCD writes, Serial prints, I2C reads above, plus fudge for
-  // the rtc.adjust() write itself.
-  unsigned long elapsed_since_irq = (millis() - irq_ms) + 10;
+  // Build the corrected DateTime:
+  // irq_ms is the millis() value captured at the exact IRQ moment (true
+  // second boundary). total_elapsed_ms covers the entire receive loop
+  // duration plus all I2C reads above, giving the correct current time.
+  // We then advance by 1 full second because rtc.adjust() will be called
+  // wwvb_rtc_delay ms after this point — timed so the RTC ticks over cleanly.
+  unsigned long total_elapsed_ms = (millis() - irq_ms);
+  DateTime decoded = DateTime(2000 + data_year, data_month, data_day,
+                              data_hour, data_minute, data_second)
+                     + TimeSpan((int32_t)(total_elapsed_ms / 1000));
 
-  DateTime corrected = DateTime(2000 + data_year, data_month, data_day,
-                                data_hour, data_minute, data_second)
-                       + TimeSpan((int32_t)(elapsed_since_irq / 1000));
+  // Advance 1 second — we will call rtc.adjust() after wwvb_rtc_delay ms,
+  // at which point the next whole second will have arrived.
+  DateTime corrected = decoded + TimeSpan(1);
+
+  // Wait until wwvb_rtc_delay ms have elapsed since the IRQ, then set RTC.
+  // This aligns the RTC write to the next clean second boundary.
+  unsigned long elapsed_so_far = millis() - irq_ms;
+  unsigned long next_second_offset = (total_elapsed_ms / 1000 + 1) * 1000UL;
+  unsigned long target_ms = irq_ms + next_second_offset - 1000UL + wwvb_rtc_delay;
+  while (millis() < target_ms) { /* busy-wait for the right moment */ }
+
   rtc.adjust(corrected);
 }
 
@@ -1841,6 +1867,7 @@ int es100_receive(int dt_array[]) {
   // local variables
   int irq_status = 0;
   int current_timer_value;
+  unsigned long irq_capture_ms = 0;  // declared here so it survives past the while loop
   count = 0;
   beginTime = millis();
 
@@ -1857,7 +1884,6 @@ int es100_receive(int dt_array[]) {
 
   // Serial.print("Done with es100_start_rx, starting while(irq_status != 0x01) \n");
   // loop until time received
-  unsigned long irq_capture_ms = 0;  // ← declare before while loop
   while ((irq_status != 0x01) && (count < attempt)) {
 
 
@@ -1915,25 +1941,30 @@ int es100_receive(int dt_array[]) {
     // time_inIRQ = 134000 (without ES100)
 
 
-    Serial.print("Waiting for interrupt ... ");  // The following three are my test statements
+    Serial.print("Waiting for interrupt ... ");
     es100_wait_for_irq();
-
-    es100_wait_for_irq();
-    unsigned long irq_capture_ms = millis();  // ← capture HERE, before LCD/Serial/I2C
+    irq_capture_ms = millis();  // capture at true second boundary, before any other work
 
     if (time_inIRQ > time_inIRQ_limit) {
       Serial.println("Possible Antenna Problem");
-      // ... rest of antenna problem handling unchanged ...
-    } else {
+      Serial.println("Time_inIRQ");
+      Serial.println(time_inIRQ);
       lcd.setCursor(0, 3);
-      lcd.print("Attempt:");
-      lcd.setCursor(9, 3);
+      lcd.print("Antenna Not Detected");
+      attempt = 4;
+      sync_type = 0;
+    } else {
+
+      lcd.setCursor(0, 3);
+      lcd.print("Attempt:");  // overwrite old data
+      lcd.setCursor(9, 3);    // reset the cursor
       lcd.print(count);
-      lcd.setCursor(12, 3);
+      lcd.setCursor(12, 3);  // reset the cursor
       lcd.print("of");
-      lcd.setCursor(15, 3);
+      lcd.setCursor(15, 3);  // reset the cursor
       lcd.print(attempt);
     }
+
 
     Serial.print("Elapsed time to here...");
     elapsedTime = millis() - beginTime;
@@ -1942,20 +1973,26 @@ int es100_receive(int dt_array[]) {
 
     Serial.print("Time_inIRQ: ");
     Serial.println(time_inIRQ);
+    // interrupt defines second boundary, so save current timer value
     current_timer_value = mcu_timer_read();
+    // read interrupt status
     irq_status = es100_get_irq_status();
+    // Serial.print("IRQ status = 0x");
+    // Serial.println(irq_status, HEX);
   }  // End while
 
   if (irq_status == 0x01) {
-    endTime = irq_capture_ms;           // use the captured timestamp
+    // Serial.print("IRQ status 0x01 received, now outside of while loop in function es100_receive(int dt_array[ ]) --------------------\n");
+    endTime = irq_capture_ms;
     elapsedTime = endTime - beginTime;
     if (time_inIRQ > time_inIRQ_limit) {
       sync_type = 0;
     } else {
-      es100_read_time(dt_array, irq_capture_ms);  // pass it through
+      es100_read_time(dt_array, irq_capture_ms);  // pass IRQ timestamp for full elapsed correction
       time_here = 0;
     }
   }
+
   // disable ES100
   es100_disable();
   lcd.clear();
@@ -1971,6 +2008,135 @@ int es100_receive(int dt_array[]) {
 NeoGPS::Location_t base(406806940L, -1050406110L);  // WWVB Ft. Collins CO
 //NeoGPS::Location_t base( -253448688L, 1310324914L ); // Ayers Rock, AU
 
+//==============================================================================
+// Astronomy helper functions
+// All solar algorithms from Jean Meeus "Astronomical Algorithms" (1998).
+// Inputs: UTC date/time from RTC, lat/lon in decimal degrees from GPS.
+//==============================================================================
+
+// Convert degrees to radians
+static inline double deg2rad(double d) { return d * 0.017453292519943; }
+static inline double rad2deg(double r) { return r * 57.29577951308232; }
+
+// Fractional Julian Day from calendar date + hour (UTC)
+double toJulian(int y, int mo, int d, double h) {
+  if (mo <= 2) { y--; mo += 12; }
+  int A = (int)(y / 100);
+  int B = 2 - A + (int)(A / 4);
+  return (int)(365.25 * (y + 4716)) + (int)(30.6001 * (mo + 1)) + d + h / 24.0 + B - 1524.5;
+}
+
+// ── Solar position ──────────────────────────────────────────────────────────
+SolarTimes calcSolar(int yr, int mo, int dy, float lat, float lon) {
+  SolarTimes r;
+  double JD = toJulian(yr, mo, dy, 12.0);
+  double n  = JD - 2451545.0;
+
+  // Mean longitude, mean anomaly (degrees)
+  double L = fmod(280.460 + 0.9856474 * n, 360.0);
+  double g = fmod(357.528 + 0.9856003 * n, 360.0);
+  double gR = deg2rad(g);
+
+  // Ecliptic longitude
+  double lambda = L + 1.915 * sin(gR) + 0.020 * sin(2 * gR);
+  double lambdaR = deg2rad(lambda);
+
+  // Obliquity of ecliptic
+  double eps = 23.439 - 0.0000004 * n;
+  double epsR = deg2rad(eps);
+
+  // Right ascension, declination
+  double sinDec = sin(epsR) * sin(lambdaR);
+  double dec = asin(sinDec);
+
+  // Equation of time (minutes)
+  double RA = rad2deg(atan2(cos(epsR) * sin(lambdaR), cos(lambdaR))) / 15.0;
+  double GMST = fmod(6.697375 + 0.0657098242 * n, 24.0);
+  double EqT = (GMST - RA) * 60.0;
+  // Clamp EqT to sane range
+  while (EqT > 20) EqT -= 60;
+  while (EqT < -20) EqT += 60;
+
+  // Solar noon (minutes UTC)
+  double noonUTC = 720.0 - 4.0 * lon - EqT;
+  r.noon = (float)noonUTC;
+
+  // Hour angle for sunrise/sunset
+  double latR = deg2rad(lat);
+  double cosHA = (cos(deg2rad(90.833)) - sin(latR) * sinDec) / (cos(latR) * cos(dec));
+  if (cosHA < -1.0) { r.sunrise = -1; r.sunset = -1; return r; }  // polar day
+  if (cosHA >  1.0) { r.sunrise = -2; r.sunset = -2; return r; }  // polar night
+  double HA = rad2deg(acos(cosHA)) * 4.0;  // minutes
+
+  r.sunrise = (float)(noonUTC - HA);
+  r.sunset  = (float)(noonUTC + HA);
+  return r;
+}
+
+// ── Twilight ────────────────────────────────────────────────────────────────
+// Returns time (minutes UTC) for given solar depression angle.
+// angle: 96=civil, 102=nautical, 108=astronomical
+float calcTwilight(int yr, int mo, int dy, float lat, float lon,
+                   float angle, bool isMorning) {
+  double JD = toJulian(yr, mo, dy, 12.0);
+  double n  = JD - 2451545.0;
+  double L  = fmod(280.460 + 0.9856474 * n, 360.0);
+  double g  = fmod(357.528 + 0.9856003 * n, 360.0);
+  double gR = deg2rad(g);
+  double lambda = L + 1.915 * sin(gR) + 0.020 * sin(2 * gR);
+  double lambdaR = deg2rad(lambda);
+  double eps  = 23.439 - 0.0000004 * n;
+  double epsR = deg2rad(eps);
+  double sinDec = sin(epsR) * sin(lambdaR);
+  double dec = asin(sinDec);
+  double RA = rad2deg(atan2(cos(epsR) * sin(lambdaR), cos(lambdaR))) / 15.0;
+  double GMST = fmod(6.697375 + 0.0657098242 * n, 24.0);
+  double EqT = (GMST - RA) * 60.0;
+  while (EqT > 20) EqT -= 60;
+  while (EqT < -20) EqT += 60;
+  double noonUTC = 720.0 - 4.0 * lon - EqT;
+  double latR = deg2rad(lat);
+  double cosHA = (cos(deg2rad(angle)) - sin(latR) * sinDec) / (cos(latR) * cos(dec));
+  if (cosHA < -1.0 || cosHA > 1.0) return -1;
+  double HA = rad2deg(acos(cosHA)) * 4.0;
+  return (float)(isMorning ? noonUTC - HA : noonUTC + HA);
+}
+
+// ── Moon phase ───────────────────────────────────────────────────────────────
+// Returns current moon age in days (0=new, 7=first quarter, 14=full, 21=last)
+// and fills daysToFull / daysToNew.
+float moonPhase(int yr, int mo, int dy, int &daysToFull, int &daysToNew) {
+  double JD = toJulian(yr, mo, dy, 12.0);
+  // Known new moon: Jan 6 2000 = JD 2451549.5
+  double daysSinceNew = fmod(JD - 2451549.5, 29.53059);
+  if (daysSinceNew < 0) daysSinceNew += 29.53059;
+  daysToFull = (int)round(14.765 - daysSinceNew);
+  if (daysToFull < 0) daysToFull += 30;
+  daysToNew  = (int)round(29.53059 - daysSinceNew);
+  if (daysToNew  < 0) daysToNew  += 30;
+  return (float)daysSinceNew;
+}
+
+// Format minutes-from-midnight UTC as HH:MM string into buf (needs 6 chars)
+void fmtUTCmins(float mins, char *buf) {
+  if (mins < 0) { strcpy(buf, "--:--"); return; }
+  int h = (int)(mins / 60) % 24;
+  int m = (int)mins % 60;
+  snprintf(buf, 6, "%02d:%02d", h, m);
+}
+
+// Moon phase name from age in days
+const char* moonPhaseName(float age) {
+  if (age <  1.85) return "New Moon       ";
+  if (age <  7.38) return "Waxing Crescent";
+  if (age <  9.22) return "First Quarter  ";
+  if (age < 14.77) return "Waxing Gibbous ";
+  if (age < 16.61) return "Full Moon      ";
+  if (age < 22.15) return "Waning Gibbous ";
+  if (age < 23.99) return "Last Quarter   ";
+  if (age < 29.53) return "Waning Crescent";
+  return "New Moon       ";
+}
 
 
 void setup() {
@@ -2728,54 +2894,7 @@ void loop() {
 
       switch (coord_sys) {
 
-        case 1:
-          if (currentMillis - previousMillis >= interval) {
-            previousMillis = currentMillis;
-
-            GPSloop_loc();  // Go get GPS location
-
-            lcd.setCursor(0, 0);
-            lcd.print("GPS Coords DMS(DD) ");
-
-            // --- Latitude in decimal degrees ---
-            // fix.latitude() returns a float (e.g. 35.3457).  Use dtostrf so we
-            // control width/precision without printf on embedded targets.
-            float lat_dd = fix.latitude();   // signed: negative = South
-            float lon_dd = fix.longitude();  // signed: negative = West
-
-            char lat_buf[12];                 // "-" + 3 deg + "." + 6 frac + NUL = 12 max
-            char lon_buf[13];                 // "-" + 3 deg + "." + 6 frac + NUL = 13 max
-            dtostrf(lat_dd, 10, 6, lat_buf);  // width=10, 6 decimal places
-            dtostrf(lon_dd, 11, 6, lon_buf);  // width=11 (longitude can be 3 digits)
-
-            lcd.setCursor(0, 1);
-            lcd.print("Lat:              ");
-            lcd.setCursor(4, 1);
-            lcd.print(lat_buf);
-           // lcd.setCursor(19, 1);
-           // lcd.print(lat_dd >= 0 ? "N" : "S");
-
-            // --- Longitude in decimal degrees ---
-            lcd.setCursor(0, 2);
-            lcd.print("Lon:              ");
-            lcd.setCursor(4, 2);
-            lcd.print(lon_buf);
-            //lcd.setCursor(19, 2);
-            //lcd.print(lon_dd >= 0 ? "E" : "W");
-
-            // --- Altitude ---
-            lcd.setCursor(0, 3);
-            lcd.print("Alt(ft):          ");
-            lcd.setCursor(9, 3);
-            lcd.print(fix.altitude_ft());
-          }
-          break;
-
-
-          // }
-
-
-        case 0:
+case 0:
           //  if(coord_sys == 1) {
           if (currentMillis - previousMillis >= interval) {
             previousMillis = currentMillis;
@@ -2783,7 +2902,7 @@ void loop() {
             GPSloop_loc_DMS();  //Go get GPS location
 
             lcd.setCursor(0, 0);
-            lcd.print("GPS Coords (DMS)DD");
+            lcd.print("GPS Coords (DMS)DD ");
 
             // Print Latitude in DMS format
             lcd.setCursor(0, 1);
@@ -2821,6 +2940,56 @@ void loop() {
           break;
           // }
 
+
+
+        case 1:
+          if (currentMillis - previousMillis >= interval) {
+            previousMillis = currentMillis;
+
+            GPSloop_loc();  // Go get GPS location
+
+            lcd.setCursor(0, 0);
+            lcd.print("GPS Coords DMS(DD) ");
+
+            // --- Latitude in decimal degrees ---
+            // fix.latitude() returns a float (e.g. 35.3457).  Use dtostrf so we
+            // control width/precision without printf on embedded targets.
+            float lat_dd = fix.latitude();   // signed: negative = South
+            float lon_dd = fix.longitude();  // signed: negative = West
+
+            char lat_buf[12];                 // "-" + 3 deg + "." + 6 frac + NUL = 12 max
+            char lon_buf[13];                 // "-" + 3 deg + "." + 6 frac + NUL = 13 max
+            dtostrf(lat_dd, 10, 6, lat_buf);  // width=10, 6 decimal places
+            dtostrf(lon_dd, 11, 6, lon_buf);  // width=11 (longitude can be 3 digits)
+
+            lcd.setCursor(0, 1);
+            lcd.print("Lat:              ");
+            lcd.setCursor(4, 1);
+            lcd.print(lat_buf);
+            // lcd.setCursor(19, 1);
+            // lcd.print(lat_dd >= 0 ? "N" : "S");
+
+            // // --- Longitude in decimal degrees ---
+            lcd.setCursor(0, 2);
+            lcd.print("Lon:              ");
+            lcd.setCursor(4, 2);
+            lcd.print(lon_buf);
+            // lcd.setCursor(19, 2);
+            // lcd.print(lon_dd >= 0 ? "E" : "W");
+
+            // --- Altitude ---
+            lcd.setCursor(0, 3);
+            lcd.print("Alt(ft):          ");
+            lcd.setCursor(9, 3);
+            lcd.print(fix.altitude_ft());
+          }
+          break;
+
+
+          // }
+
+
+        
           //   if (coord_sys == 2) {
         case 2:
 
@@ -2829,8 +2998,6 @@ void loop() {
           lcd.setCursor(0, 0);
           lcd.print("GPS (Vel)");
           lcd.setCursor(11, 0);
-        //  lcd.print("Sats: ");
-
           {
             char sat_buf[4];
             snprintf(sat_buf, sizeof(sat_buf), "%-3u", (unsigned)fix.satellites);
@@ -2901,43 +3068,84 @@ void loop() {
 
     case 5:
       // ---------------------DST Transition Info ---------------------
+      // Row 0: title
+      // Row 1: Rec:  <abbr month> <day> <hour>h  (from WWVB ES100 registers)
+      // Row 2: Calc: <abbr month> <day> <hour>h  (computed from DST rules)
+      {
+        lcd.setCursor(0, 0);
+        lcd.print("Next DST Transition ");
 
-      // int data_dst_next_month = (uint8_t)dst_next_month;
-      // int data_dst_next_day = (uint8_t)dst_next_day;
-      // int data_dst_next_hour
-           // Month name lookup — index 0 unused, months are 1-based
-     // const char* monthNames[] = { "", "January", "February", "March", "April",
-     //                              "May", "June", "July", "August",
-       //                            "September", "October", "November", "December" };
+        // --- Row 1: Received from WWVB ---
+        lcd.setCursor(0, 1);
+        lcd.print("Rec:                ");
+        if (data_dst_next_month >= 1 && data_dst_next_month <= 12) {
+          char rec_buf[16];
+          snprintf(rec_buf, sizeof(rec_buf), "%-3.3s %02d %02dh",
+                   monthNames[data_dst_next_month], data_dst_next_day, data_dst_next_hour);
+          lcd.setCursor(5, 1);
+          lcd.print(rec_buf);
+        } else {
+          lcd.setCursor(5, 1);
+          lcd.print("--  --  --h         ");
+        }
 
-      lcd.setCursor(0, 0);
-      lcd.print("Next DST Update");
-      
-      lcd.setCursor(0, 1);
-      lcd.print("Month:              ");
-      lcd.setCursor(7, 1);
-      if (data_dst_next_month >= 1 && data_dst_next_month <= 12) {
-        lcd.print(monthNames[data_dst_next_month]);
-      } else {
-        lcd.print("--");
+        // --- Row 2: Calculated from DST rules ---
+        {
+          NeoGPS::time_t calc;
+          calc.year    = now.year() - 2000;  // NeoGPS uses 2-digit year
+          calc.minutes = 0;
+          calc.seconds = 0;
+
+          // Compute spring-forward date for this year
+          calc.month = springMonth;
+          calc.date  = springDate;
+          calc.hours = springHour;
+          calc.set_day();
+          calc.date -= (calc.day - NeoGPS::time_t::SUNDAY);
+          uint8_t sf_day = calc.date;
+
+          // Compute fall-back date for this year
+          calc.month = fallMonth;
+          calc.date  = fallDate;
+          calc.hours = fallHour;
+          calc.set_day();
+          calc.date -= (calc.day - NeoGPS::time_t::SUNDAY);
+          uint8_t fb_day = calc.date;
+
+          // Determine which transition is next
+          uint8_t calc_month, calc_day, calc_hour;
+          bool past_spring = (now.month() > springMonth) ||
+                             (now.month() == springMonth && now.day() >= sf_day);
+          bool past_fall   = (now.month() > fallMonth) ||
+                             (now.month() == fallMonth   && now.day() >= fb_day);
+
+          if (!past_spring) {
+            calc_month = springMonth;  calc_day = sf_day;  calc_hour = springHour;
+          } else if (!past_fall) {
+            calc_month = fallMonth;    calc_day = fb_day;  calc_hour = fallHour;
+          } else {
+            // Both passed — compute spring forward for next year
+            calc.year  = (now.year() + 1) - 2000;
+            calc.month = springMonth;
+            calc.date  = springDate;
+            calc.hours = springHour;
+            calc.set_day();
+            calc.date -= (calc.day - NeoGPS::time_t::SUNDAY);
+            calc_month = springMonth;  calc_day = calc.date;  calc_hour = springHour;
+          }
+
+          char calc_buf[16];
+          snprintf(calc_buf, sizeof(calc_buf), "%-3.3s %02d %02dh",
+                   monthNames[calc_month], calc_day, calc_hour);
+          lcd.setCursor(0, 2);
+          lcd.print("Calc:               ");
+          lcd.setCursor(5, 2);
+          lcd.print(calc_buf);
+        }
+
+        lcd.setCursor(0, 3);
+        lcd.print("                    ");
       }
-
-      lcd.setCursor(0, 2);
-      lcd.print("Day: ");
-      lcd.setCursor(7, 2);
-      if (data_dst_next_day <= 9) {
-        lcd.print("0");
-        lcd.setCursor(8, 2);
-        lcd.print(data_dst_next_day, DEC);
-      } else {
-        lcd.print(data_dst_next_day, DEC);
-      }
-   lcd.setCursor(0, 3);
-      lcd.print("Hour: ");
-      lcd.setCursor(7, 3);
-      lcd.print(data_dst_next_hour, DEC);
-
-
       break;
 
     case 6:
@@ -2990,7 +3198,140 @@ void loop() {
       lcd.print(fix.altitude_ft());
       break;
 
-    case 7:
+    case 7:  // ------------------ Sunrise / Sunset / Solar Noon ------------------
+      {
+        float fb_lat, fb_lon;
+        switch (timezone_count_num) {
+          case 1:  fb_lat =  35.2; fb_lon =  -80.8; break;
+          case 2:  fb_lat =  35.1; fb_lon =  -90.0; break;
+          case 3:  fb_lat =  39.7; fb_lon = -104.9; break;
+          case 4:  fb_lat =  39.5; fb_lon = -119.8; break;
+          case 5:  fb_lat =  50.1; fb_lon =    8.7; break;
+          case 6:  fb_lat =  52.5; fb_lon =   -1.9; break;
+          default: fb_lat =  51.5; fb_lon =    0.0; break;
+        }
+        float lat = fix.valid.location ? fix.latitude()  : fb_lat;
+        float lon = fix.valid.location ? fix.longitude() : fb_lon;
+        // Use stamp (local date/time) or now (UTC date) depending on mode.
+        // stamp is populated from Timezone-converted local time each loop iteration.
+        int calc_yr = (astro_time_sys == 0) ? (int)stamp.year  : now.year();
+        int calc_mo = (astro_time_sys == 0) ? (int)stamp.month : now.month();
+        int calc_dy = (astro_time_sys == 0) ? (int)stamp.day   : now.day();
+        SolarTimes sol = calcSolar(calc_yr, calc_mo, calc_dy, lat, lon);
+        // Cast to signed long before subtracting — time_t is unsigned on Arduino
+        // so direct subtraction underflows for negative (west of UTC) offsets.
+        float tz_mins = (astro_time_sys == 0) ? (float)((long)local - (long)utc) / 60.0 : 0.0;
+        char rise[6], set[6], noon_buf[6];
+        fmtUTCmins(sol.sunrise + tz_mins, rise);
+        fmtUTCmins(sol.sunset  + tz_mins, set);
+        fmtUTCmins(sol.noon    + tz_mins, noon_buf);
+        lcd.setCursor(0, 0);
+        if (astro_time_sys == 0) {
+          lcd.print("Sun (Local)UTC      ");
+        } else {
+          lcd.print("Sun Local(UTC)      ");
+        }
+        lcd.setCursor(0, 1);
+        lcd.print("Rise:               ");
+        lcd.setCursor(6, 1); lcd.print(rise);
+        lcd.setCursor(0, 2);
+        lcd.print("Set:                ");
+        lcd.setCursor(6, 2); lcd.print(set);
+        lcd.setCursor(0, 3);
+        lcd.print("Solar Noon:               ");
+        lcd.setCursor(12, 3); lcd.print(noon_buf);
+      }
+      break;
+
+    case 8:  // ------------------ Moon Phase ------------------
+      {
+        // Use stamp fields for local date, now fields for UTC date.
+        // Avoids gmtime() which has platform issues on Arduino.
+        int m_yr = (astro_time_sys == 0) ? (int)stamp.year  : now.year();
+        int m_mo = (astro_time_sys == 0) ? (int)stamp.month : now.month();
+        int m_dy = (astro_time_sys == 0) ? (int)stamp.day   : now.day();
+        int daysToFull, daysToNew;
+        float age = moonPhase(m_yr, m_mo, m_dy, daysToFull, daysToNew);
+        lcd.setCursor(0, 0);
+        if (astro_time_sys == 0) {
+          lcd.print("Moon (Local)UTC     ");
+        } else {
+          lcd.print("Moon Local(UTC)     ");
+        }
+        lcd.setCursor(0, 1);
+        lcd.print(moonPhaseName(age));
+        lcd.setCursor(0, 2);
+        lcd.print("Age:                ");
+        lcd.setCursor(5, 2);
+        {
+          char agebuf[7];
+          dtostrf(age, 4, 1, agebuf);
+          lcd.print(agebuf);
+          lcd.print("d");
+        }
+        lcd.setCursor(0, 3);
+        lcd.print("Full:               ");
+        lcd.setCursor(6, 3);
+        lcd.print(daysToFull);
+        lcd.print("d  New:");
+        lcd.setCursor(15, 3);
+        lcd.print(daysToNew);
+        lcd.print("d  ");
+      }
+      break;
+
+    case 9:  // ------------------ Astronomical Twilight ------------------
+      {
+                // GPS fallback: use geographic center of selected timezone
+        float fb_lat, fb_lon;
+        switch (timezone_count_num) {
+          case 1:  fb_lat =  35.2; fb_lon =  -80.8; break;  // usET: Charlotte NC
+          case 2:  fb_lat =  35.1; fb_lon =  -90.0; break;  // usCT: Memphis TN
+          case 3:  fb_lat =  39.7; fb_lon = -104.9; break;  // usMT: Denver CO
+          case 4:  fb_lat =  39.5; fb_lon = -119.8; break;  // usPT: Reno NV
+          case 5:  fb_lat =  50.1; fb_lon =    8.7; break;  // CE:   Frankfurt
+          case 6:  fb_lat =  52.5; fb_lon =   -1.9; break;  // UK:   Birmingham
+          default: fb_lat =  51.5; fb_lon =    0.0; break;  // UTC:  Greenwich
+        }
+        float lat = fix.valid.location ? fix.latitude()  : fb_lat;
+        float lon = fix.valid.location ? fix.longitude() : fb_lon;
+        // Morning twilight (sun rising — use isMorning=true)
+        // Civil = 96 deg, Nautical = 102 deg, Astronomical = 108 deg
+        // Use stamp for local date, now for UTC date.
+        // Cast to signed long before subtracting to avoid unsigned underflow.
+        int tw_yr = (astro_time_sys == 0) ? (int)stamp.year  : now.year();
+        int tw_mo = (astro_time_sys == 0) ? (int)stamp.month : now.month();
+        int tw_dy = (astro_time_sys == 0) ? (int)stamp.day   : now.day();
+        float tz_mins = (astro_time_sys == 0) ? (float)((long)local - (long)utc) / 60.0 : 0.0;
+        char hdr[21];
+        snprintf(hdr, sizeof(hdr), "Twilight(%s) AM  PM",
+                 astro_time_sys == 0 ? "Loc" : "UTC");
+        lcd.setCursor(0, 0);
+        lcd.print(hdr);
+        char civ_m2[6], nau_m2[6], ast_m2[6];
+        char civ_e2[6], nau_e2[6], ast_e2[6];
+        fmtUTCmins(calcTwilight(tw_yr, tw_mo, tw_dy, lat, lon,  96.0, true)  + tz_mins, civ_m2);
+        fmtUTCmins(calcTwilight(tw_yr, tw_mo, tw_dy, lat, lon, 102.0, true)  + tz_mins, nau_m2);
+        fmtUTCmins(calcTwilight(tw_yr, tw_mo, tw_dy, lat, lon, 108.0, true)  + tz_mins, ast_m2);
+        fmtUTCmins(calcTwilight(tw_yr, tw_mo, tw_dy, lat, lon,  96.0, false) + tz_mins, civ_e2);
+        fmtUTCmins(calcTwilight(tw_yr, tw_mo, tw_dy, lat, lon, 102.0, false) + tz_mins, nau_e2);
+        fmtUTCmins(calcTwilight(tw_yr, tw_mo, tw_dy, lat, lon, 108.0, false) + tz_mins, ast_e2);
+        lcd.setCursor(0, 1);
+        lcd.print("Civl:               ");
+        lcd.setCursor(6, 1); lcd.print(civ_m2);
+        lcd.setCursor(13, 1); lcd.print(civ_e2);
+        lcd.setCursor(0, 2);
+        lcd.print("Naut:               ");
+        lcd.setCursor(6, 2); lcd.print(nau_m2);
+        lcd.setCursor(13, 2); lcd.print(nau_e2);
+        lcd.setCursor(0, 3);
+        lcd.print("Astr:               ");
+        lcd.setCursor(6, 3); lcd.print(ast_m2);
+        lcd.setCursor(13, 3); lcd.print(ast_e2);
+      }
+      break;
+
+    case 10:
       //lcd.clear();
       lcd.setCursor(0, 0);
       lcd.print("Events");
@@ -3023,7 +3364,7 @@ void loop() {
 
       break;
 
-    case 8:  //WWV Audio
+    case 11:  //WWV Audio
 
       lcd.setCursor(0, 0);
       lcd.print("WWV (Ft.Collins, CO)");
@@ -3214,7 +3555,7 @@ void loop() {
 
       break;
 
-    case 9:  //WWVH Audio
+    case 12:  //WWVH Audio
       lcd.setCursor(0, 0);
       lcd.print("WWVH (Kauai, Hawaii)");
       // monitor volume pot, set volume
